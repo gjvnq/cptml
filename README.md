@@ -1,9 +1,5 @@
 # XML-NG
 
-* Good APIs for rust and go (including canonization that minimizes space)
-* API always tries to validate the document unless it is instructed not to or the URI is an empty string)
-
-
 ## Major Features
 
 * Escaping with backslash. Ex: `\t`, `\u00AD`, `\u{AD}`
@@ -18,7 +14,41 @@
 * Attributes don't require quotes if they are: numbers, `true` or `false`.
 * Trailing whitespace is *always* ignored unless it is escaped.
 
+* Good APIs for rust and go (including canonization that minimizes space)
+* API always tries to validate the document unless it is instructed not to or the URI is an empty string)
+
 ## Examples
+
+## Whitespace
+
+This:
+
+```xml
+<?xml-ng?>
+<root>
+	<tag/>
+</root>
+```
+
+is the same as:
+
+```xml
+<?xml-ng?>
+<root><tag/></root>
+```
+
+but not the same as:
+
+```xml
+<?xml-ng?>
+<root>
+\t<tag/>
+</root>
+```
+
+For simple spaces, use `&sp;` or `\s`.
+
+By the way, the valid single letter escapes are: `\a`, `\b`, `\f`, `\n`, `\r`, `\t`, `\v`, `\s`, `\\`, `\"`, `\&`, `\<`, `\>`.
 
 ### Import
 
