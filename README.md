@@ -3,13 +3,13 @@
 ## Major Features
 
 * Escaping with backslash. Ex: `\t`, `\u00AD`, `\u{AD}`
-* All HTML entities are incorporated. Ex: `&nbsp;` and `&forall;` ∀, `&sigmaf;` ς
+* The only entities available are the ones in HTML. Ex: `&nbsp;` and `&forall;` ∀, `&sigmaf;` ς
 * Long escaping with `<![[[` and `]]]>` (replaces `<!CDATA[[` and allows nesting by adding more brackets)
 * Empty attribute just like in HTML. Ex: `<tag attr/>`
 * No DTD, CDATA or other archaic non sense.
 * Required heading `<?xml-ng?>`
 * Special tags begin with colon `!` or `:` (avoids the need for long prefixes)
-* Allow concurrent trees with layers prefixed with double colons `::`
+* Allow concurrent trees with layers prefixed with double colons `%`
 * Attributes can be repeated if they use brackets at the end, ex: `name[]="adjdj dj" name[]="ekdjdj"`
 * Attributes don't require quotes if they are: numbers, `true` or `false`.
 * Trailing whitespace is *always* ignored unless it is escaped.
@@ -54,12 +54,16 @@ By the way, the valid single letter escapes are: `\a`, `\b`, `\f`, `\n`, `\r`, `
 
 ```xml
 <?xml-ng?>
-<!import uri="other.xmlng" path="/cool-stuff" !>
+<:import uri="other.xmlng" xpath="/cool-stuff">
+	My <b>fallback</b> content
+</:import>
 ```
 
-It will not escape the contents if they begin with a valid XML or XML-NG declaration. Use `escape=false` to behave otherwise.
 
-The DOM will keep an indication where includes happen.
+By default the content is escaped if and only if it does not begin with a valid XML or XML-NG declaration.
+Use the `escape` attribute to specify other behavior.
+
+The DOM-NG will keep an indication where includes happen and a way to access the fallback content regardless of the success or failure in obtaining the desired resource.
 
 ### Base64
 
@@ -72,7 +76,7 @@ This is useful for singing stuff. The parser will auto decode the base64 content
 </:base64>
 ```
 
-Will be "seen" by the DOM as:
+Will be "seen" by the DOM-NG as:
 
 ```xml
 <?xml-ng?>
@@ -81,6 +85,7 @@ Will be "seen" by the DOM as:
 </:base64>
 ```
 
+The DOM-NG will provide an easy way to access the raw base64 content.
 
 ### Concurrent trees
 
@@ -90,32 +95,32 @@ If a tag does not specify any concurrent tree, then it applies to all concurrent
 
 ```xml
 <?xml-ng?>
-<!-- t:: is for the typesetting tree --!>
-<!-- g:: is for the grammar tree --!>
+<!-- t% is for the typesetting tree -->
+<!-- g% is for the grammar tree -->
 <doc>
 <page>
-<t::line><g::sentence>I, by attorney, bless thee from thy mother,</t::line>
-<t::line>Who prays continually for Richmond's good.</g::sentence></t::line>
+<t%line><g%sentence>I, by attorney, bless thee from thy mother,</t%line>
+<t%line>Who prays continually for Richmond's good.</g%sentence></t%line>
 </page>
 <!-- Note it is possible to abbreviate the tag endings -->
 <page>
-<t::line><g::sentence>So much for that.</g::><g::sentence>—The silent hours steal on,</t::>
-<t::line>And flaky darkness breaks within the east.</g::></t::>
+<t%line><g%sentence>So much for that.</g%><g%sentence>—The silent hours steal on,</t%>
+<t%line>And flaky darkness breaks within the east.</g%></t%>
 </>
 </doc>
 ```
 
 
-When writing xpaths, the concurrent tree is specified in beginning. Example: `t::/page/line`, `g:://sentence`.
+When writing xpaths, the concurrent tree is specified in beginning. Example: `t%/page/line`, `g%//sentence`.
 
 If a concurrent tree is not specified in an xpath, then only the default tree is considered.
 
 Concurrent trees aren't limited to a single namespace. Example:
 
-```xml
+```xml-ng
 <?xml-ng?>
-<a::ns1:tag ns1:attr ns2:attr=10 />
-<a::ns2:tag/>
+<a%ns1:tag ns1:attr ns2:attr=10 />
+<a%ns2:tag/>
 ```
 
 
