@@ -1,9 +1,10 @@
-<?TLNML?>
+<?tlnml?>
+<!-- Some escape sequences -->
 &<!--
 &&
 &u2a;
 <!-- TLNEML - TeX Like Notation Extensible Markup Language -->
-\link[enabled :id=unification-markup kind=Article res="doi:10.1080/13614560802316145" arg=abc]{
+\link#link-id.class1.class2[enabled kind=Article res="doi:10.1080/1361460802316145" arg=abc]{
 	<!-- comment -->
 	\name{Towards the unification of formats for overlapping markup}
 	\url{https://hal.archives-ouvertes.fr/hal-00340578}
@@ -21,12 +22,12 @@
 \poem{
 <t%line><g%sentence>I, by attorney, bless thee from thy mother,</t%>
 <t%line>Who prays continually for Richmond's good.</g%></t%>
-<t%line><g%sentence>So much for that.</g%><g%sentence>—The silent hours steal on,</t%>
+<t%tei:line><g%sentence>So much for that.</g%><g%sentence>—The silent hours steal on,</t%>
 <t%line>And flaky darkness breaks within the east.</g%></t%>
 }
 
 \poem{
-\line{<g%sentence>I, by attorney, bless thee from thy mother,}
+\line{<g%sentence id="abc">I, by attorney, bless thee from thy mother,}
 \line{Who prays continually for Richmond's good.</g%>}
 \line{<g%sentence>So much for that.</g%><g%sentence>—The silent hours steal on,}
 \line{And flaky darkness breaks within the east.</g%>}
