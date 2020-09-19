@@ -1,0 +1,273 @@
+#################################################################
+## Iro
+################################################################ 
+##
+## * Press Ctrl + '+'/'-' To Zoom in
+## * Press Ctrl + S to save and recalculate... 
+## * Documents are saved to web storage.
+## * Only one save slot supported.
+## * Matches cannot span lines.
+## * Unicode chars must be defined in \u0000 to \uffff format.
+## * All matches must be contained by a single group ( ... )
+## * Look behinds not permitted, (?<= or (?<!
+## * Look forwards are permitted (?= or (?!
+## * Constants are defined as __my_const = (......)
+## * The \= format allows unescaped regular expressions
+## * Constants referenced by match \= $${__my_const}
+## * Constants can reference other constants
+## * You are free to delete all the default scopes.
+## * Twitter : ainslec , Web: http://eeyo.io/iro
+##
+################################################################
+
+name                   = mysample
+file_extensions []     = mysample;
+
+################################################################
+## Constants
+################################################################
+
+__MY_CONSTANT \= (\b[a-z][a-z0-9]*?)
+
+__NAME_BASE \= (\w(\w|[-_])+)
+__ATTR_VAL \= ([^\[\] "']+)
+__NAME \= (:$${__NAME_BASE}|($${__NAME_BASE}:|)$${__NAME_BASE})
+// __NAME \= ($${__NAME_SHORT})
+
+################################################################
+## Styles
+################################################################
+
+styles [] {
+
+.comment : style {
+   color                 = light_green
+   italic                = true
+   ace_scope             = comment
+   textmate_scope        = comment
+   pygments_scope        = Comment
+}
+
+.escape : style {
+   color     = purple
+   ace_scope             = constant.character.escape
+   textmate_scope        = constant.character.escape
+   pygments_scope        = String.Escape
+
+}
+
+.keyword : style {
+   color     = cyan
+   ace_scope             = keyword
+   textmate_scope        = keyword
+   pygments_scope        = Keyword
+}
+
+.tag : style {
+   color     = violet_red
+   ace_scope             = Name
+   textmate_scope        = Name
+   pygments_scope        = Name
+}
+
+.attr_name : style {
+   color     = cyan
+   ace_scope             = entity.other.attribute-name
+   textmate_scope        = entity.other.attribute-name
+   pygments_scope        = Name
+}
+
+.attr_val : style {
+   color                 = brown
+   ace_scope             = text
+   textmate_scope        = text
+   pygments_scope        = String
+}
+
+.numeric : style {
+   color                 = gold
+   ace_scope             = constant.numeric
+   textmate_scope        = constant.numeric
+   pygments_scope        = Number
+}
+
+.punctuation : style {
+   color     = red_2
+   ace_scope             = punctuation
+   textmate_scope        = punctuation
+   pygments_scope        = Punctuation
+}
+
+.text : style {
+   color                 = brown
+   ace_scope             = text
+   textmate_scope        = text
+   pygments_scope        = String
+}
+
+.illegal : style {
+   color                 = white
+   background_color      = red
+   ace_scope             = invalid
+   textmate_scope        = invalid
+   pygments_scope        = Generic.Error
+}
+
+}
+
+#################################################
+## Parse contexts
+#################################################
+
+contexts [] {
+
+##############################################
+## Main Context - Entry point context
+##############################################
+
+main : context {
+
+   : include "escape" ;
+   : include "header" ;
+   : include "comment" ;
+   : include "textag" ;
+
+   // : inline_push {
+   //    regex          \= (\{)
+   //    styles []       = .punctuation;
+   //    : pop {  
+   //       regex       \= (\})
+   //       styles []    = .punctuation;
+   //    }
+   //    : include "main" ;
+   // }
+   
+   // : pattern {
+   //    regex          \= (;)
+   //    styles []       = .punctuation;
+   // }
+   
+   // : inline_push {
+   //    regex          \= (\")
+   //    styles []       = .punctuation;
+   //    default_style   = .text
+   //    : pop {
+   //       regex       \= (\")
+   //       styles []    = .punctuation;
+   //    }
+   // }
+   
+   // : inline_push {
+   //    regex          \= (\()
+   //    styles []       = .punctuation;
+   //    : pop {
+   //       regex       \= (\))
+   //       styles []    = .punctuation;
+   //    }
+   //    : include "numeric" ;
+   //    : pattern {
+   //       regex       \= (,)
+   //       styles []    = .punctuation;
+   //    }
+   // }
+   
+   // : pattern {
+   //    regex          \= ([^\s])
+   //    styles []       = .illegal;
+   // }
+   
+}
+
+#################################################
+## End of Contexts
+#################################################
+
+###########################################
+## Numeric Context
+###########################################
+
+numeric : context {
+   : pattern {
+      regex          \= (\b\d+)
+      styles []       = .numeric;
+   }
+}
+
+escape : context {
+   : pattern {
+      regex          \= (&(u[0-9a-fA-f]+;|.))
+      styles []       = .escape;
+   }
+}
+
+textag : context {
+   : inline_push {
+      regex          \= (\\)([a-z]+)
+      styles []       = .punctuation, .tag;
+      : pop {
+         regex       \= (?:\s|{)
+         styles []    = .punctuation;
+      }
+      : include "texargs" ;
+   }
+}
+
+texargs : context {
+   : inline_push {
+      regex          \= (\[)
+      styles []       = .punctuation;
+      : pop {
+         regex       \= (\])
+         styles []    = .punctuation;
+      }
+      : inline_push {
+         regex          \= ($${__NAME})
+         styles []       = .attr_name;
+         : pop {
+            regex       \= (?=(\s|\]))
+            styles []    = .punctuation;
+         }
+         : inline_push {
+            regex          \= (=)
+            styles []       = .punctuation;
+            : pop {
+               regex       \= (?=(\s|\]))
+               styles []    = .punctuation;
+            }
+            # TODO: include strings
+            : pattern {
+               regex          \= ($${__ATTR_VAL})
+               styles []       = .attr_val;
+            }
+         }
+      }
+   }
+}
+
+comment : context {
+   description        = multiline
+   : inline_push {
+      regex          \= (<!--)
+      styles []       = .comment;
+      default_style   = .comment
+      : pop {
+         regex       \= (-->)
+         styles []    = .comment;
+      }
+   }
+}
+
+header : context {
+   description        = header
+   : inline_push {
+      regex          \= (<\?)
+      styles []       = .keyword;
+      default_style   = .keyword
+      : pop {
+         regex       \= (\?>)
+         styles []    = .keyword;
+      }
+   }
+}
+   
+}

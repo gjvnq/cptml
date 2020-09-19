@@ -1,0 +1,33 @@
+<?TLNML?>
+&<!--
+&&
+&u2a;
+<!-- TLNEML - TeX Like Notation Extensible Markup Language -->
+\link[enabled :id=unification-markup kind=Article res="doi:10.1080/13614560802316145" arg=abc]{
+	<!-- comment -->
+	\name{Towards the unification of formats for overlapping markup}
+	\url{https://hal.archives-ouvertes.fr/hal-00340578}
+	\url[type=PDF]{https://hal.archives-ouvertes.fr/hal-00340578/document}
+	\abstract[:lang=en]{
+		Overlapping markup refers to the issue of how to represent data structures more expressive than trees-for example direct acyclic graphs-using markup (meta-)languages which have been designed with trees in mind-for example XML. In this paper we observe that the state of the art in overlapping markup is far from being the widespread and consistent stack of standards and technologies readily available for XML and develop a roadmap for closing the gap. In particular we present in the paper the design and implementation of what we believe to be the first needed step, namely: a syntactic conversion framework among the plethora of overlapping markup serialization formats. The algorithms needed to perform the various conversions are presented in pseudo-code, they are meant to be used as blueprints for researchers and practitioners which need to write batch translation programs from one format to the other.
+	}
+	\date{2008-01}
+	\author{\name{Paolo Marinelli}}
+	\author{\name{Fabio Vitali}}
+	\author{\name{Stefano Zacchiroli}}
+	\tags{language,graph theory,math,xml}
+}
+
+\poem{
+<t%line><g%sentence>I, by attorney, bless thee from thy mother,</t%>
+<t%line>Who prays continually for Richmond's good.</g%></t%>
+<t%line><g%sentence>So much for that.</g%><g%sentence>—The silent hours steal on,</t%>
+<t%line>And flaky darkness breaks within the east.</g%></t%>
+}
+
+\poem{
+\line{<g%sentence>I, by attorney, bless thee from thy mother,}
+\line{Who prays continually for Richmond's good.</g%>}
+\line{<g%sentence>So much for that.</g%><g%sentence>—The silent hours steal on,}
+\line{And flaky darkness breaks within the east.</g%>}
+}

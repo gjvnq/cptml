@@ -87,6 +87,26 @@ Will be "seen" by the DOM-NG as:
 
 The DOM-NG will provide an easy way to access the raw base64 content.
 
+### Implicit endings
+
+```
+<?xml-ng?>
+<document>
+	<p>Hi,</>
+	<p>Lorem ipsum ...
+</document>
+```
+
+Is the same as
+
+```
+<?xml-ng?>
+<document>
+	<p>Hi,</p>
+	<p>Lorem ipsum</p>
+</document>
+```
+
 ### Concurrent trees
 
 Each concurrent tree is like its own separate documents which can contain multiple namespaces.
