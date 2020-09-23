@@ -3,12 +3,12 @@ package tlnml
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"io"
 	"regexp"
 	"strconv"
 	"strings"
 	"unicode"
-	"fmt"
 )
 
 const TEX_STYLE = '\''
@@ -20,6 +20,8 @@ var RE_NOQUOTE = regexp.MustCompile(`^[\p{L}\p{N}_-]*`)
 var RE_NAME_START = regexp.MustCompile(`[\p{Ll}\p{Lt}\p{Lu}\p{Lo}]`) // Note the abscence of \p{Lm}
 var RE_NAME_CONT = regexp.MustCompile(`[\p{L}\p{N}\p{S}]*`)
 
+var reTagName = regexp.MustCompile(`((?P<View>[\p{L}\p{N}._-]+)\|)?(?P<NSColon>(?P<NS>[\p{L}\p{N}._-]+?):|:|)(?P<Name>[\p{L}\p{N}._-]+)`)
+
 var NonParsedCharData = errors.New("CharData was not parsed")
 
 type NameOrString interface{}
@@ -29,23 +31,44 @@ type CharData struct {
 	/// Number of brackets used/necessary to escape the text. Zero if "normal" inline text.
 	bracketsNum int
 	val         strings.Builder
-	isParsed    bool
 	mode        int
-	tmpRune rune
-	tmpStr strings.Builder
+	tmpRune     rune
+	tmpStr      strings.Builder
+	final       string
+	gotFirst    bool
+	last        int
+	StartPos    Pos
 }
 
 func (dat CharData) String() string {
-	return dat.val.String()
+	return dat.final
+}
+
+func (dat CharData) isZero() bool {
+	return dat.val.Len() == 0
+}
+
+func (dat *CharData) finish() {
+	dat.final = dat.val.String()[:dat.last]
+	dat.val.Reset()
 }
 
 func (dat *CharData) writeRune(r rune) error {
 	if dat.mode == 0 {
 		// mode: Regular text
+		isSpace := unicode.IsSpace(r)
+
 		if r == '&' {
+			dat.gotFirst = true
 			dat.mode = 1
-		} else {
+		} else if dat.gotFirst {
 			dat.val.WriteRune(r)
+		} else if !isSpace {
+			dat.gotFirst = true
+			dat.val.WriteRune(r)
+		}
+		if !isSpace && r != '&' {
+			dat.last = dat.val.Len()
 		}
 	} else if dat.mode == 1 {
 		// mode: First char after &
@@ -71,8 +94,10 @@ func (dat *CharData) writeRune(r rune) error {
 			if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
 				return errors.New("CharData parse: unexpected char (" + string(r) + ") in entity name")
 			}
+			dat.last = dat.val.Len()
 		} else {
 			dat.val.WriteRune(dat.tmpRune)
+			dat.last = dat.val.Len()
 			dat.mode = 0
 			dat.tmpRune = '�'
 		}
@@ -86,6 +111,7 @@ func (dat *CharData) writeRune(r rune) error {
 				return errors.New("CharData parse: unknown entity: " + entityName)
 			}
 			dat.val.WriteString(entity)
+			dat.last = dat.val.Len()
 		} else if unicode.IsLetter(r) || unicode.IsDigit(r) {
 			dat.tmpStr.WriteRune(r)
 		} else {
@@ -105,6 +131,8 @@ func (dat CharData) onEscape() bool {
 /// A Token is an interface holding one of the token types: StartElement, EndElement, CharData, Comment, EndInput.
 type Token interface {
 	String() string
+	isZero() bool
+	finish()
 }
 
 // "id" => {$elemNS, "id"}, ":id" => {"tlnml", "id"}
@@ -140,6 +168,14 @@ type Pos struct {
 	Col  int
 }
 
+func (this Pos) String() string {
+	return fmt.Sprintf("%d:%d", this.Line, this.Col)
+}
+
+func (this Pos) IsZero() bool {
+	return this.Byte == 0 && this.Line == 0 && this.Col == 0
+}
+
 func (this *Pos) advance(r rune, size int) {
 	this.Byte += size
 	this.Col += 1
@@ -166,6 +202,22 @@ type BasicElement struct {
 	StartPos Pos
 }
 
+func (this BasicElement) isZero() bool {
+	return false
+}
+
+func (this BasicElement) finish() {}
+
+func (this *BasicElement) setNameAndView(tag string) {
+	nameParts := reTagName.FindStringSubmatch(tag)
+	this.View = nameParts[2]
+	this.Name.Space = nameParts[4]
+	if len(nameParts[3]) == 1 {
+		this.Name.Space = "tlnml"
+	}
+	this.Name.Local = nameParts[5]
+}
+
 type StartElement struct {
 	BasicElement
 	SelfClosing bool
@@ -173,7 +225,15 @@ type StartElement struct {
 }
 
 func (this StartElement) String() string {
-	return fmt.Sprintf("StartElement(%c %s%%%s %v)", this.Style, this.View, this.Name.String(), this.SelfClosing)
+	v := ""
+	if len(this.View) != 0 {
+		v = this.View + "%"
+	}
+	pos := ""
+	if !this.StartPos.IsZero() {
+		pos = " " + this.StartPos.String()
+	}
+	return fmt.Sprintf("StartElement('%c' %s%s %v%s)", this.Style, v, this.Name.String(), this.SelfClosing, pos)
 }
 
 type EndElement struct {
@@ -182,11 +242,25 @@ type EndElement struct {
 }
 
 func (this EndElement) String() string {
-	return fmt.Sprintf("EndElement(%c %s%%%s %v)", this.Style, this.View, this.Name.String(), this.AbbrevEnding)
+	v := ""
+	if len(this.View) != 0 {
+		v = this.View + "%"
+	}
+	pos := ""
+	if !this.StartPos.IsZero() {
+		pos = " " + this.StartPos.String()
+	}
+	return fmt.Sprintf("EndElement('%c' %s%s %v%s)", this.Style, v, this.Name.String(), this.AbbrevEnding, pos)
 }
 
 type EndInput struct {
 	StartPos Pos
+}
+
+func (this EndInput) finish() {}
+
+func (this EndInput) isZero() bool {
+	return false
 }
 
 func (this EndInput) String() string {
@@ -205,45 +279,65 @@ func NewTokenReader(in io.Reader) TokenReader {
 }
 
 type BasicTokenReader struct {
-	src    *bufio.Reader
-	mode   int
-	submode   int
-	cur    Token
-	pos    Pos
-	stacks map[string][]Token
+	src        *bufio.Reader
+	mode       int
+	submode    int
+	cur        Token
+	pos        Pos
+	eof        bool
+	stacks     map[string][]Token
+	cleanToken bool
 }
 
 func (this *BasicTokenReader) ReadToken() (Token, error) {
 	var err error
-
-	if this.cur == nil {
-		this.cur = new(CharData)
-	}
 	if this.stacks == nil {
 		this.stacks = make(map[string][]Token)
 		this.stacks[""] = make([]Token, 0)
 	}
-	
+
 	tmpStr := strings.Builder{}
-	for {
+	r := '\000'
+	r_size := 0
+	skipRead := false
+	for !this.eof {
 		// Read a single character from input
-		r, r_size, err := this.src.ReadRune()
-		this.pos.advance(r, r_size)
-		if err == io.EOF {
-			break
+		if !skipRead {
+			r, r_size, err = this.src.ReadRune()
+			this.pos.advance(r, r_size)
+			// fmt.Printf("%c %d:%d %+v\n", r, this.mode, this.submode, this.cur)
+			if err == io.EOF {
+				this.eof = true
+				// Yield current token if non-zero
+				if this.cur != nil && this.cleanToken && !this.cur.isZero() {
+					this.cur.finish()
+					return this.cur, nil
+				} else {
+					return EndInput{}, nil
+				}
+			}
+			if err != nil {
+				return this.cur, err
+			}
 		}
-		if err != nil {
-			return this.cur, err
-		}
+		skipRead = false
 		// Inline text mode
 		if this.mode == 0 {
 			// mode: regular text
+			if !this.cleanToken {
+				this.cleanToken = true
+				curNew := new(CharData)
+				curNew.StartPos = this.pos
+				this.cur = curNew
+			}
 			cur := this.cur.(*CharData)
 			if r == '<' && !cur.onEscape() {
 				tmpStr.Reset()
 				this.mode = 1
+				this.cleanToken = false
 				// yield the current token
-				break
+				this.cur.finish()
+				return this.cur, nil
 			} else {
 				cur.writeRune(r)
 			}
@@ -255,33 +349,61 @@ func (this *BasicTokenReader) ReadToken() (Token, error) {
 				this.submode = 0
 				cur := new(EndElement)
 				cur.Style = XML_STYLE
+				cur.StartPos = this.pos
 				this.cur = cur
+				this.cleanToken = true
 			} else {
 				this.mode = 2
 				this.submode = 0
 				cur := new(StartElement)
 				cur.Style = XML_STYLE
+				cur.StartPos = this.pos
 				tmpStr.WriteRune(r)
 				this.cur = cur
+				this.cleanToken = true
 			}
 		} else if this.mode == 2 {
 			// mode: start XML tag
+			if !this.cleanToken {
+				this.cleanToken = true
+				this.cur = new(StartElement)
+			}
+			cur := this.cur.(*StartElement)
 			if this.submode == 0 {
 				// submode: reading view and name
 				if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '|' || r == ':' {
+					// Continue reading tag name
 					tmpStr.WriteRune(r)
 				} else {
-					// Separate name parts
-					// Use regex: (([\p{L}\p{N}._-]+)\|)?(([\p{L}\p{N}._-]+?):|:|)([\p{L}\p{N}._-]+)
-					// View: group 2
-					// Namespace: group 3 (including colon at the end)
-					// Namespace: group 4
-					// Local: group 5
-					println(tmpStr.String())
+					// Parse tag name
+					cur.setNameAndView(tmpStr.String())
 					this.submode = 1
+					skipRead = true
 				}
 			} else if this.submode == 1 {
 				// submode: reading attribute
+				if r == '/' {
+					cur.SelfClosing = true
+					this.submode = 2
+				}
+				if r == '>' {
+					// yield
+					this.mode = 0
+					this.cleanToken = false
+					this.cur.finish()
+					return this.cur, nil
+				}
+			} else if this.submode == 2 {
+				// submode: finish tag
+				if r == '>' {
+					// yield
+					this.mode = 0
+					this.cleanToken = false
+					this.cur.finish()
+					return this.cur, nil
+				} else {
+					return nil, errors.New("ReadToken: unexpected char on finish XML tag: " + string(r))
+				}
 			} else {
 				return nil, errors.New("ReadToken: unknown submode: " + strconv.Itoa(this.submode))
 			}
@@ -293,10 +415,5 @@ func (this *BasicTokenReader) ReadToken() (Token, error) {
 
 	}
 
-	err = nil
-	// switch v := this.cur.(type) {
-	// case *CharData:
-	// 	err = v.parse()
-	// }
-	return this.cur, err
+	return EndInput{}, nil
 }
