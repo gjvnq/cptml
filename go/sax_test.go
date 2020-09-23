@@ -34,3 +34,13 @@ func TestBasicTokenReader4(t *testing.T) {
 	assert.Equal(t, "Hi! < > & \v \t  ±⥒", token.String())
 	assert.Nil(t, err)
 }
+
+func TestBasicTokenReader5(t *testing.T) {
+	reader := NewTokenReader(strings.NewReader("Hi! &< <v|1ns:loc4l/>"))
+	token, err := reader.ReadToken()
+	assert.Nil(t, err)
+	assert.Equal(t, "Hi! < ", token.String())
+	token, err = reader.ReadToken()
+	assert.Nil(t, err)
+	assert.Equal(t, StartElement{}, token.String())
+}
