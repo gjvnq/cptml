@@ -24,11 +24,16 @@ variables:
 
 contexts:
   main:
-    - include: comment
     - include: declaration
+    - include: general
+  general:
+    - include: comment
+    - include: namespace
     - include: entity
     - include: textag
     - include: xmltag
+    - match: '([\}\{<>])'
+      scope: invalid.illegal.tlnml
   textag:
     - match: '(\\)({{qualified_name}})'
       captures:
@@ -40,7 +45,12 @@ contexts:
         - meta_scope: meta.tag.tlnml
         - match: '(\s|\{)'
           scope: punctuation.definition.tag.end.tlnml
-          pop: true
+          set:
+            - meta_scope: text.tlnml
+            - match: '(\})'
+              scope: punctuation.definition.tag.end.tlnml
+              pop: true
+            - include: general
         - match: '\['
           scope: punctuation.group.brace.start
           push: texargs
@@ -66,10 +76,10 @@ contexts:
         - match: '[^"\s\]]*'
           scope: string.unquoted.tlnml
   xmltag:
-    - match: '(<)(/|)(({{name}})(%)|)({{qualified_name}}|)'
+    - match: '(<)(/|)(({{name}})(\|)|)({{qualified_name}}|)'
       captures:
         1: entity.name.tag punctuation.definition.tag.tlnml
-        2: entity.name.tag punctuation.definition.tag.tlnml
+        2: entity.name.tag punctuation.definition.tag.end.tlnml
         4: entity.name.tag.view.tlnml
         5: entity.name.tag.view.tlnml punctuation.definition.view.tlnml
         6: entity.name.tag.namespace.tlnml
@@ -98,7 +108,25 @@ contexts:
     - match: '(<\?)(tlnml)' #(?=\s)'
       captures:
         1: punctuation.definition.tag.begin.tlnml
-        2: entity.name.tag.tlnml
+        2: keyword.declaration.tlnml
+      push:
+        - meta_scope: meta.tag.preprocessor.tlnml
+        - match: '\?>'
+          scope: punctuation.definition.tag.end.tlnml
+          pop: true
+        - match: '\s+{{qualified_name}}(=)?'
+          captures:
+            1: entity.other.attribute-name.namespace.tlnml
+            2: entity.other.attribute-name.tlnml punctuation.separator.namespace.tlnml
+            3: entity.other.attribute-name.localname.tlnml
+            4: punctuation.separator.key-value.tlnml
+        - include: double-quoted-string
+        - include: single-quoted-string
+  namespace:
+    - match: '(<\?)(ns)'
+      captures:
+        1: punctuation.definition.tag.begin.tlnml
+        2: keyword.declaration.tlnml
       push:
         - meta_scope: meta.tag.preprocessor.tlnml
         - match: '\?>'
