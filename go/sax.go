@@ -20,7 +20,7 @@ var RE_NOQUOTE = regexp.MustCompile(`^[\p{L}\p{N}_-]*`)
 var RE_NAME_START = regexp.MustCompile(`[\p{Ll}\p{Lt}\p{Lu}\p{Lo}]`) // Note the abscence of \p{Lm}
 var RE_NAME_CONT = regexp.MustCompile(`[\p{L}\p{N}\p{S}]*`)
 
-var reTagName = regexp.MustCompile(`((?P<View>[\p{L}\p{N}._-]+)\|)?(?P<NSColon>(?P<NS>[\p{L}\p{N}._-]+?):|:|)(?P<Name>[\p{L}\p{N}._-]+)`)
+var reTagName = regexp.MustCompile(`((?P<View>[\p{L}\p{N}._-]+)\|)?(?P<NSColon>(?P<NS>[\p{L}\p{N}._-]+?):|:|)(?P<Name>[\p{L}\p{N}._-]+)?`)
 
 var NonParsedCharData = errors.New("CharData was not parsed")
 
@@ -140,7 +140,14 @@ type Name struct {
 	Space, Local string
 }
 
+func (n Name) IsZero() bool {
+	return len(n.Space) == 0 && len(n.Local) == 0
+}
+
 func (n Name) String() string {
+	// if len(n.Space) == 0 {
+	// 	return n.Local
+	// }
 	return n.Space + ":" + n.Local
 }
 
@@ -227,7 +234,7 @@ type StartElement struct {
 func (this StartElement) String() string {
 	v := ""
 	if len(this.View) != 0 {
-		v = this.View + "%"
+		v = this.View + "|"
 	}
 	pos := ""
 	if !this.StartPos.IsZero() {
@@ -244,7 +251,7 @@ type EndElement struct {
 func (this EndElement) String() string {
 	v := ""
 	if len(this.View) != 0 {
-		v = this.View + "%"
+		v = this.View + "|"
 	}
 	pos := ""
 	if !this.StartPos.IsZero() {
@@ -285,15 +292,29 @@ type BasicTokenReader struct {
 	cur        Token
 	pos        Pos
 	eof        bool
-	stacks     map[string][]Token
+	stacks     map[string][]StartElement
 	cleanToken bool
+}
+
+func (this *BasicTokenReader) push(elem StartElement) {
+	if this.stacks[elem.View] == nil {
+		this.stacks[elem.View] = make([]StartElement, 0)
+	}
+	this.stacks[elem.View] = append(this.stacks[elem.View], elem)
+}
+
+func (this *BasicTokenReader) pop(view string) StartElement {
+	top := len(this.stacks[view])
+	ans := this.stacks[view][top-1]
+	this.stacks[view] = this.stacks[view][:top-1]
+	return ans
 }
 
 func (this *BasicTokenReader) ReadToken() (Token, error) {
 	var err error
 	if this.stacks == nil {
-		this.stacks = make(map[string][]Token)
-		this.stacks[""] = make([]Token, 0)
+		this.stacks = make(map[string][]StartElement)
+		this.stacks[""] = make([]StartElement, 0)
 	}
 
 	tmpStr := strings.Builder{}
@@ -335,9 +356,11 @@ func (this *BasicTokenReader) ReadToken() (Token, error) {
 				tmpStr.Reset()
 				this.mode = 1
 				this.cleanToken = false
-				// yield the current token
-				this.cur.finish()
-				return this.cur, nil
+				if !this.cur.isZero() {
+					// yield the current token
+					this.cur.finish()
+					return this.cur, nil
+				}
 			} else {
 				cur.writeRune(r)
 			}
@@ -350,6 +373,7 @@ func (this *BasicTokenReader) ReadToken() (Token, error) {
 				cur := new(EndElement)
 				cur.Style = XML_STYLE
 				cur.StartPos = this.pos
+				cur.StartPos.Col -= 1
 				this.cur = cur
 				this.cleanToken = true
 			} else {
@@ -358,6 +382,7 @@ func (this *BasicTokenReader) ReadToken() (Token, error) {
 				cur := new(StartElement)
 				cur.Style = XML_STYLE
 				cur.StartPos = this.pos
+				cur.StartPos.Col -= 1
 				tmpStr.WriteRune(r)
 				this.cur = cur
 				this.cleanToken = true
@@ -387,6 +412,9 @@ func (this *BasicTokenReader) ReadToken() (Token, error) {
 					this.submode = 2
 				}
 				if r == '>' {
+					if !cur.SelfClosing {
+						this.push(*cur)
+					}
 					// yield
 					this.mode = 0
 					this.cleanToken = false
@@ -396,6 +424,9 @@ func (this *BasicTokenReader) ReadToken() (Token, error) {
 			} else if this.submode == 2 {
 				// submode: finish tag
 				if r == '>' {
+					if !cur.SelfClosing {
+						this.push(*cur)
+					}
 					// yield
 					this.mode = 0
 					this.cleanToken = false
@@ -409,6 +440,32 @@ func (this *BasicTokenReader) ReadToken() (Token, error) {
 			}
 		} else if this.mode == 3 {
 			// mode: end XML tag
+			cur := this.cur.(*EndElement)
+			// submode: reading view and name
+			if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '|' || r == ':' {
+				// Continue reading tag name
+				tmpStr.WriteRune(r)
+			} else if tmpStr.Len() != 0 {
+				// Parse tag name
+				cur.setNameAndView(tmpStr.String())
+			}
+			if r == '>' {
+				var err error
+				cur.AbbrevEnding = cur.Name.IsZero()
+				start := this.pop(cur.View)
+				if cur.AbbrevEnding {
+					cur.Name = start.Name
+					cur.View = start.View
+				} else if cur.Name.String() != start.Name.String() {
+					err = errors.New("wrong element closure, expected "+start.Name.String()+" but got "+cur.Name.String())
+				}
+
+				// yield
+				this.mode = 0
+				this.cleanToken = false
+				this.cur.finish()
+				return this.cur, err
+			}
 		} else {
 			return nil, errors.New("ReadToken: unknown mode: " + strconv.Itoa(this.mode))
 		}
