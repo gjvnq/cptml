@@ -157,24 +157,49 @@ func TestBasicTokenReader9(t *testing.T) {
 	assert.Equal(t, "EndElement('<' a true 0:33)", token.String())
 }
 
-// func TestBasicTokenReader10(t *testing.T) {
-// 	reader := NewTokenReader(strings.NewReader("\\h1{My <a|s>Title}\\p{My Te</a|>xt!}"))
-// 	token, err := reader.ReadToken()
-// 	assert.Nil(t, err)
-// 	assert.Equal(t, "StartElement('<' tlnml:a true 0:9)", token.String())
-// 	token, err = reader.ReadToken()
-// 	assert.Nil(t, err)
-// 	assert.Equal(t, "a", token.String())
-// 	token, err = reader.ReadToken()
-// 	assert.Nil(t, err)
-// 	assert.Equal(t, "StartElement('<' b true 1:4)", token.String())
-// 	token, err = reader.ReadToken()
-// 	assert.Nil(t, err)
-// 	assert.Equal(t, "c", token.String())
-// 	token, err = reader.ReadToken()
-// 	assert.Nil(t, err)
-// 	assert.Equal(t, "StartElement('<' v%1ns:loc4l true 1:10)", token.String())
-// 	token, err = reader.ReadToken()
-// 	assert.Equal(t, "␄", token.String())
-// 	assert.Nil(t, err)
-// }
+func TestBasicTokenReader10(t *testing.T) {
+	reader := NewTokenReader(strings.NewReader(`\h1{My&sp;<a|s>Title}\p{My Te</a|>xt!}`))
+	token, err := reader.ReadToken()
+	assert.Nil(t, err)
+	assert.Equal(t, "StartElement('\\' h1 false 0:1)", token.String())
+
+	token, err = reader.ReadToken()
+	assert.Nil(t, err)
+	assert.Equal(t, "My ", token.String())
+
+	token, err = reader.ReadToken()
+	assert.Nil(t, err)
+	assert.Equal(t, "StartElement('<' a|s false 0:11)", token.String())
+
+	token, err = reader.ReadToken()
+	assert.Nil(t, err)
+	assert.Equal(t, "Title", token.String())
+
+	token, err = reader.ReadToken()
+	assert.Nil(t, err)
+	assert.Equal(t, "EndElement('\\' h1 true 0:21)", token.String())
+
+	token, err = reader.ReadToken()
+	assert.Nil(t, err)
+	assert.Equal(t, "StartElement('\\' p false 0:22)", token.String())
+
+	token, err = reader.ReadToken()
+	assert.Nil(t, err)
+	assert.Equal(t, "My Te", token.String())
+
+	token, err = reader.ReadToken()
+	assert.Nil(t, err)
+	assert.Equal(t, "EndElement('<' a|s true 0:30)", token.String())
+
+	token, err = reader.ReadToken()
+	assert.Nil(t, err)
+	assert.Equal(t, "xt!", token.String())
+
+	token, err = reader.ReadToken()
+	assert.Nil(t, err)
+	assert.Equal(t, "EndElement('\\' p true 0:38)", token.String())
+
+	token, err = reader.ReadToken()
+	assert.Equal(t, "␄", token.String())
+	assert.Nil(t, err)
+}

@@ -11,7 +11,7 @@ import (
 	"unicode"
 )
 
-const TEX_STYLE = '\''
+const TEX_STYLE = '\\'
 const XML_STYLE = '<'
 const PROC_INST_STYLE = '?'
 
@@ -294,6 +294,8 @@ type BasicTokenReader struct {
 	eof        bool
 	stacks     map[string][]StartElement
 	cleanToken bool
+	r          rune
+	skipRead   bool
 }
 
 func (this *BasicTokenReader) push(elem StartElement) {
@@ -315,16 +317,18 @@ func (this *BasicTokenReader) ReadToken() (Token, error) {
 	if this.stacks == nil {
 		this.stacks = make(map[string][]StartElement)
 		this.stacks[""] = make([]StartElement, 0)
+		this.skipRead = false
 	}
 
 	tmpStr := strings.Builder{}
 	r := '\000'
 	r_size := 0
-	skipRead := false
 	for !this.eof {
+		r = this.r
 		// Read a single character from input
-		if !skipRead {
+		if !this.skipRead {
 			r, r_size, err = this.src.ReadRune()
+			this.r = r
 			this.pos.advance(r, r_size)
 			// fmt.Printf("%c %d:%d %+v\n", r, this.mode, this.submode, this.cur)
 			if err == io.EOF {
@@ -341,7 +345,7 @@ func (this *BasicTokenReader) ReadToken() (Token, error) {
 				return this.cur, err
 			}
 		}
-		skipRead = false
+		this.skipRead = false
 		// Inline text mode
 		if this.mode == 0 {
 			// mode: regular text
@@ -352,17 +356,30 @@ func (this *BasicTokenReader) ReadToken() (Token, error) {
 				this.cur = curNew
 			}
 			cur := this.cur.(*CharData)
+			yield := true
 			if r == '<' && !cur.onEscape() {
 				tmpStr.Reset()
 				this.mode = 1
 				this.cleanToken = false
-				if !this.cur.isZero() {
-					// yield the current token
-					this.cur.finish()
-					return this.cur, nil
-				}
+			} else if r == '\\' && !cur.onEscape() {
+				tmpStr.Reset()
+				this.mode = 4
+				this.submode = 0
+				this.cleanToken = false
+			} else if r == '}' && !cur.onEscape() {
+				tmpStr.Reset()
+				this.mode = 5
+				this.cleanToken = false
+				this.skipRead = true
 			} else {
 				cur.writeRune(r)
+				yield = false
+			}
+
+			if yield && !this.cur.isZero() {
+				// yield the current token
+				this.cur.finish()
+				return this.cur, nil
 			}
 		} else if this.mode == 1 {
 			// mode: found <, not sure if start or end
@@ -403,7 +420,7 @@ func (this *BasicTokenReader) ReadToken() (Token, error) {
 					// Parse tag name
 					cur.setNameAndView(tmpStr.String())
 					this.submode = 1
-					skipRead = true
+					this.skipRead = true
 				}
 			} else if this.submode == 1 {
 				// submode: reading attribute
@@ -457,7 +474,7 @@ func (this *BasicTokenReader) ReadToken() (Token, error) {
 					cur.Name = start.Name
 					cur.View = start.View
 				} else if cur.Name.String() != start.Name.String() {
-					err = errors.New("wrong element closure, expected "+start.Name.String()+" but got "+cur.Name.String())
+					err = errors.New("wrong element closure, expected " + start.Name.String() + " but got " + cur.Name.String())
 				}
 
 				// yield
@@ -466,6 +483,60 @@ func (this *BasicTokenReader) ReadToken() (Token, error) {
 				this.cur.finish()
 				return this.cur, err
 			}
+		} else if this.mode == 4 {
+			// mode: begin TeX tag
+			var cur *StartElement
+			var ok bool
+
+			cur, ok = this.cur.(*StartElement)
+			if !ok {
+				cur = new(StartElement)
+				cur.Style = TEX_STYLE
+				cur.StartPos = this.pos
+				cur.StartPos.Col -= 1
+				this.cur = cur
+				this.cleanToken = true
+				this.submode = 0
+			}
+
+			if this.submode == 0 {
+				if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '|' || r == ':' {
+					// Continue reading tag name
+					tmpStr.WriteRune(r)
+				} else if tmpStr.Len() != 0 {
+					// Parse tag name
+					cur.setNameAndView(tmpStr.String())
+				}
+
+				if r == '{' {
+					this.push(*cur)
+					// yield
+					this.mode = 0
+					this.cleanToken = false
+					this.cur.finish()
+					return this.cur, nil
+				}
+			}
+		} else if this.mode == 5 {
+			// mode: end TeX tag
+			var err error
+			cur := new(EndElement)
+			this.cur = cur
+
+			cur.AbbrevEnding = true
+			start := this.pop(cur.View)
+			cur.StartPos = this.pos
+			cur.Name = start.Name
+			cur.View = start.View
+			cur.Style = TEX_STYLE
+			if cur.Style != start.Style {
+				err = errors.New("wrong element closure, expected TeX style " + start.Name.String() + " but got XML style " + cur.Name.String())
+			}
+			// yield
+			this.mode = 0
+			this.cleanToken = false
+			this.cur.finish()
+			return this.cur, err
 		} else {
 			return nil, errors.New("ReadToken: unknown mode: " + strconv.Itoa(this.mode))
 		}
