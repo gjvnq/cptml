@@ -145,9 +145,9 @@ func (n Name) IsZero() bool {
 }
 
 func (n Name) String() string {
-	// if len(n.Space) == 0 {
-	// 	return n.Local
-	// }
+	if len(n.Space) == 0 {
+		return n.Local
+	}
 	return n.Space + ":" + n.Local
 }
 
