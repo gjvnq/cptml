@@ -1,4 +1,15 @@
-# XML-NG
+# CPTML
+
+CPTML = Curly & Pointy Tags Markup Language
+
+(also joke with CPTM: Companhia Paulista de Trens Metropolitanos)
+
+
+
+
+
+<!-- Antigo: (remover) -->
+
 
 ## Major Features
 

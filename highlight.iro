@@ -1,0 +1,320 @@
+#################################################################
+## Iro
+################################################################ 
+##
+## * Press Ctrl + '+'/'-' To Zoom in
+## * Press Ctrl + S to save and recalculate... 
+## * Documents are saved to web storage.
+## * Only one save slot supported.
+## * Matches cannot span lines.
+## * Unicode chars must be defined in \u0000 to \uffff format.
+## * All matches must be contained by a single group ( ... )
+## * Look behinds not permitted, (?<= or (?<!
+## * Look forwards are permitted (?= or (?!
+## * Constants are defined as __my_const = (......)
+## * The \= format allows unescaped regular expressions
+## * Constants referenced by match \= $${__my_const}
+## * Constants can reference other constants
+## * You are free to delete all the default scopes.
+## * Twitter : ainslec , Web: http://eeyo.io/iro
+##
+################################################################
+
+name                   = tlnml
+file_extensions []     = tlnml;
+textmate_uuid = b818f9c7-23d5-46c3-a182-06ab89c00b38
+
+################################################################
+## Constants
+################################################################
+
+__MY_CONSTANT \= (\b[a-z][a-z0-9]*?)
+
+__NAME_BASE \= (\w(\w|[-_])+)
+__ATTR_VAL \= ([^\[\] "']+)
+__NAME \= (:$${__NAME_BASE}|($${__NAME_BASE}:|)$${__NAME_BASE})
+// __NAME \= ($${__NAME_SHORT})
+
+################################################################
+## Styles
+################################################################
+
+styles [] {
+
+.comment : style {
+   color                 = light_green
+   italic                = true
+   ace_scope             = comment
+   textmate_scope        = comment.block
+   pygments_scope        = Comment
+}
+
+.string : style {
+   color                 = light_blue
+   ace_scope             = text
+   textmate_scope        = text.block
+   pygments_scope        = String
+}
+
+.escape : style {
+   color     = purple
+   ace_scope             = constant.character.escape
+   textmate_scope        = constant.character.escape
+   pygments_scope        = String.Escape
+
+}
+
+.keyword : style {
+   color     = cyan
+   ace_scope             = keyword
+   textmate_scope        = keyword
+   pygments_scope        = Keyword
+}
+
+.tag : style {
+   color     = violet_red
+   ace_scope             = Name
+   textmate_scope        = Name
+   pygments_scope        = Name
+}
+
+.attr : style {
+   color     = cyan
+   ace_scope             = entity.other.attribute-name
+   textmate_scope        = entity.other.attribute-name
+   pygments_scope        = Name
+}
+
+.numeric : style {
+   color                 = gold
+   ace_scope             = constant.numeric
+   textmate_scope        = constant.numeric
+   pygments_scope        = Number
+}
+
+.punctuation : style {
+   color     = grey
+   ace_scope             = punctuation
+   textmate_scope        = punctuation
+   pygments_scope        = Punctuation
+}
+
+.text : style {
+   color                 = white
+   ace_scope             = text
+   textmate_scope        = text
+   pygments_scope        = String
+}
+
+.illegal : style {
+   color                 = white
+   background_color      = red
+   ace_scope             = invalid
+   textmate_scope        = invalid
+   pygments_scope        = Generic.Error
+}
+
+}
+
+#################################################
+## Parse contexts
+#################################################
+
+contexts [] {
+
+##############################################
+## Main Context - Entry point context
+##############################################
+
+main : context {
+
+   : include "cdata" ;
+   : include "comment" ;
+   : include "tag" ;
+   : include "math" ;
+   : include "text" ;
+   : include "illegal" ;
+}
+
+illegal : context {
+   : pattern {
+      regex          \= (\S)
+      styles []       = .illegal;
+   }
+}
+
+numeric : context {
+   : pattern {
+      regex          \= (\b\d+)
+      styles []       = .numeric;
+   }
+}
+
+boolean : context {
+   : pattern {
+      regex          \= (false|true)
+      styles []       = .numeric;
+   }
+}
+
+tag : context {
+   // Curly tag
+   : inline_push {
+      regex          \= ({)([\w_:-]+)
+      styles []       = .punctuation, .tag;
+      : pop {
+         styles []    = .punctuation;
+         regex       \= (})
+      }
+      // Textual content
+      : inline_push {
+         regex          \= (;)
+         styles []       = .punctuation;
+         : pop {
+            styles []    = .punctuation;
+            regex       \= (?=})
+         }
+         : include "main" ;
+      }
+      // Arguments
+      : include "arg";
+   }
+   // Pointy tag
+   : inline_push {
+      regex          \= ([<|])([\w:()_-]+)
+      styles []       = .punctuation, .tag;
+      : pop {
+         styles []    = .punctuation;
+         regex       \= ([|>])
+      }
+      : include "arg";
+      : include "illegal" ;
+   }
+}
+
+cdata : context {
+   : inline_push {
+      styles []       = .punctuation;
+      regex          \= (`{3,})
+      default_style = .text
+      : pop {
+         regex       \= (`{3,})
+         styles []    = .punctuation;
+      }
+   }
+}
+
+
+arg : context {
+   : inline_push {
+      regex          \= (\w+)(=)
+      styles []       = .attr, .punctuation;
+      : pop {
+         regex       \= (?=(;|}|\s|\|))
+         styles []    = .punctuation;
+      }
+      : include "string" ;
+      : include "numeric" ;
+      : include "boolean" ;
+      : include "illegal" ;
+   }
+   : include "illegal" ;
+}
+
+escape : context {
+   : pattern {
+      regex          \= (\\(u[0-9a-fA-f]+;|[^u]))
+      styles []       = .escape;
+   }
+   : pattern {
+      regex          \= (\\(u[0-9a-fA-f]+))
+      styles []       = .illegal;
+   }
+}
+
+comment : context {
+   description        = multiline
+   : inline_push {
+      regex          \= (\/\*)
+      styles []       = .comment;
+      : pop {
+         regex       \= (\*\/)
+         styles []    = .comment;
+      }
+      : include "comment";
+      : pattern {
+         regex       \= ([^*/]+)
+         styles []    = .comment;
+      }
+      : pattern {
+         regex       \= (\*(?=[^/])|/(?=[^*]))
+         styles []    = .comment;
+      }
+   }
+}
+
+meaninglessWhitespace : context {
+   : pattern {
+      regex          \= (\s+)
+      styles []       = .comment;
+      description    = meaningless whitespace;
+   }
+}
+
+math : context {
+   description        = math
+   : inline_push {
+      regex          \= (\$\$)
+      styles []       = .keyword;
+      default_style   = .text
+      : pop {
+         regex       \= (\$\$)
+         styles []    = .keyword;
+      }
+   }
+   : inline_push {
+      regex          \= (\$)
+      styles []       = .keyword;
+      default_style   = .text
+      : pop {
+         regex       \= (\$)
+         styles []    = .keyword;
+      }
+   }
+}
+
+
+text : context {
+   description        = text
+   // Meaningless whitespace
+   : include "meaninglessWhitespace";
+   : include "escape";
+   : pattern {
+      regex          \= ([^{}\\<>|`]+)
+      styles []       = .text;
+   }
+   : pattern {
+      regex          \= ([{}\\<>|`^] )
+      styles []       = .text;
+   }
+   : include "illegal";
+}
+
+string : context {
+   description        = multiline
+   : inline_push {
+      regex          \= (")
+      styles []       = .string;
+      : pop {
+         regex       \= (")
+         styles []    = .string;
+      }
+      : include "escape";
+      : pattern {
+         regex          \= ([^\\"]+)
+         styles []       = .string;
+      }
+   }
+}
+   
+}

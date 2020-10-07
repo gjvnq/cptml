@@ -1,0 +1,47 @@
+$$ a \sum{a} \kern \\ \backslash  $$
+{artigo}
+
+{artigo; Hello}
+{artigo a=3.2 !id="a" a=2; n=2 b=false; Hello}}
+
+/* Will parse as separate trees */
+{line; <(g)tei:sentence id="abc"| I, by attorney, bless thee from thy mother,}
+{line;  /* irrelevant whitespace until "Who" */ Who prays continually for Richmond's good. |(g)sentence>  }
+{line; <(g)sentence| So much for that.|(g)sentence><(g)sentence|—The silent hours steal on,}
+{line; And flaky darkness breaks within the east.|(g)sentence>}
+
+/* Text is a "shorthand" for a few special tags:  */
+/*     :text :code :math-long :math-short  */
+$$ \frac{-b\pm\sqrt{b^2-4ac}}{2a} $$
+
+{!long-math txt=" \\frac{-b\\pm\\sqrt\{b^2-4ac\}{2a} "}
+
+/* Includes are a builtin feature */
+{!include src="file.txt"}
+
+/* No need for escape codes if followed by whitespace */
+a { a, a < b, a\{b \t
+
+```
+/* not a coment ("code text") */
+```
+/* comment *within* /* comment */ */
+
+``a``
+
+```sql
+SELECT 
+```
+
+{(v)tag}
+{ns:tag}
+{(v)ns:tag f=true attr=1 attr=a; abc}
+{!(v)ns:tag a=1 bcd=2.3}
+
+{lex:artigo id="art1";
+	{lex:rotulo; Art. 1º}
+	{lex:caput id="art1_cpt";
+		{p; O Presidente da República, o Presidente do {b; Supremo Tribunal Federal} e os
+		membros do Congresso Nacional prestarão o compromisso de manter, defender e cumprir
+		a Constituição, no ato e na data de sua promulgação.}
+}}
