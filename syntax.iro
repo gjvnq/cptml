@@ -20,8 +20,9 @@
 ##
 ################################################################
 
-name                   = mysample
-file_extensions []     = mysample;
+name                   = tlnml
+file_extensions []     = tlnml;
+textmate_uuid = b818f9c7-23d5-46c3-a182-06ab89c00b38
 
 ################################################################
 ## Constants
@@ -44,8 +45,15 @@ styles [] {
    color                 = light_green
    italic                = true
    ace_scope             = comment
-   textmate_scope        = comment
+   textmate_scope        = comment.block
    pygments_scope        = Comment
+}
+
+.string : style {
+   color                 = light_blue
+   ace_scope             = text
+   textmate_scope        = text.block
+   pygments_scope        = String
 }
 
 .escape : style {
@@ -70,18 +78,11 @@ styles [] {
    pygments_scope        = Name
 }
 
-.attr_name : style {
+.attr : style {
    color     = cyan
    ace_scope             = entity.other.attribute-name
    textmate_scope        = entity.other.attribute-name
    pygments_scope        = Name
-}
-
-.attr_val : style {
-   color                 = brown
-   ace_scope             = text
-   textmate_scope        = text
-   pygments_scope        = String
 }
 
 .numeric : style {
@@ -92,14 +93,14 @@ styles [] {
 }
 
 .punctuation : style {
-   color     = red_2
+   color     = grey
    ace_scope             = punctuation
    textmate_scope        = punctuation
    pygments_scope        = Punctuation
 }
 
 .text : style {
-   color                 = brown
+   color                 = white
    ace_scope             = text
    textmate_scope        = text
    pygments_scope        = String
@@ -127,64 +128,20 @@ contexts [] {
 
 main : context {
 
-   : include "escape" ;
-   : include "header" ;
+   : include "cdata" ;
    : include "comment" ;
-   : include "textag" ;
-
-   // : inline_push {
-   //    regex          \= (\{)
-   //    styles []       = .punctuation;
-   //    : pop {  
-   //       regex       \= (\})
-   //       styles []    = .punctuation;
-   //    }
-   //    : include "main" ;
-   // }
-   
-   // : pattern {
-   //    regex          \= (;)
-   //    styles []       = .punctuation;
-   // }
-   
-   // : inline_push {
-   //    regex          \= (\")
-   //    styles []       = .punctuation;
-   //    default_style   = .text
-   //    : pop {
-   //       regex       \= (\")
-   //       styles []    = .punctuation;
-   //    }
-   // }
-   
-   // : inline_push {
-   //    regex          \= (\()
-   //    styles []       = .punctuation;
-   //    : pop {
-   //       regex       \= (\))
-   //       styles []    = .punctuation;
-   //    }
-   //    : include "numeric" ;
-   //    : pattern {
-   //       regex       \= (,)
-   //       styles []    = .punctuation;
-   //    }
-   // }
-   
-   // : pattern {
-   //    regex          \= ([^\s])
-   //    styles []       = .illegal;
-   // }
-   
+   : include "tag" ;
+   : include "math" ;
+   : include "text" ;
+   : include "illegal" ;
 }
 
-#################################################
-## End of Contexts
-#################################################
-
-###########################################
-## Numeric Context
-###########################################
+illegal : context {
+   : pattern {
+      regex          \= (\S)
+      styles []       = .illegal;
+   }
+}
 
 numeric : context {
    : pattern {
@@ -193,79 +150,169 @@ numeric : context {
    }
 }
 
-escape : context {
+boolean : context {
    : pattern {
-      regex          \= (&(u[0-9a-fA-f]+;|.))
-      styles []       = .escape;
+      regex          \= (false|true)
+      styles []       = .numeric;
    }
 }
 
-textag : context {
+tag : context {
+   // Curly tag
    : inline_push {
-      regex          \= (\\)([a-z]+)
+      regex          \= ({)([\w_:-]+)
       styles []       = .punctuation, .tag;
       : pop {
-         regex       \= (?:\s|{)
          styles []    = .punctuation;
+         regex       \= (})
       }
-      : include "texargs" ;
+      // Textual content
+      : inline_push {
+         regex          \= (;)
+         styles []       = .punctuation;
+         : pop {
+            styles []    = .punctuation;
+            regex       \= (?=})
+         }
+         : include "main" ;
+      }
+      // Arguments
+      : include "arg";
+   }
+   // Pointy tag
+   : inline_push {
+      regex          \= ([<|])([\w:()_-]+)
+      styles []       = .punctuation, .tag;
+      : pop {
+         styles []    = .punctuation;
+         regex       \= ([|>])
+      }
+      : include "arg";
+      : include "illegal" ;
    }
 }
 
-texargs : context {
+cdata : context {
    : inline_push {
-      regex          \= (\[)
       styles []       = .punctuation;
+      regex          \= (`{3,})
+      default_style = .text
       : pop {
-         regex       \= (\])
+         regex       \= (`{3,})
          styles []    = .punctuation;
       }
-      : inline_push {
-         regex          \= ($${__NAME})
-         styles []       = .attr_name;
-         : pop {
-            regex       \= (?=(\s|\]))
-            styles []    = .punctuation;
-         }
-         : inline_push {
-            regex          \= (=)
-            styles []       = .punctuation;
-            : pop {
-               regex       \= (?=(\s|\]))
-               styles []    = .punctuation;
-            }
-            # TODO: include strings
-            : pattern {
-               regex          \= ($${__ATTR_VAL})
-               styles []       = .attr_val;
-            }
-         }
+   }
+}
+
+
+arg : context {
+   : inline_push {
+      regex          \= (\w+)(=)
+      styles []       = .attr, .punctuation;
+      : pop {
+         regex       \= (?=(;|}|\s|\|))
+         styles []    = .punctuation;
       }
+      : include "string" ;
+      : include "numeric" ;
+      : include "boolean" ;
+      : include "illegal" ;
+   }
+   : include "illegal" ;
+}
+
+escape : context {
+   : pattern {
+      regex          \= (\\(u[0-9a-fA-f]+;|[^u]))
+      styles []       = .escape;
+   }
+   : pattern {
+      regex          \= (\\(u[0-9a-fA-f]+))
+      styles []       = .illegal;
    }
 }
 
 comment : context {
    description        = multiline
    : inline_push {
-      regex          \= (<!--)
+      regex          \= (\/\*)
       styles []       = .comment;
-      default_style   = .comment
       : pop {
-         regex       \= (-->)
+         regex       \= (\*\/)
+         styles []    = .comment;
+      }
+      : include "comment";
+      : pattern {
+         regex       \= ([^*/]+)
+         styles []    = .comment;
+      }
+      : pattern {
+         regex       \= (\*(?=[^/])|/(?=[^*]))
          styles []    = .comment;
       }
    }
 }
 
-header : context {
-   description        = header
+meaninglessWhitespace : context {
+   : pattern {
+      regex          \= (\s+)
+      styles []       = .comment;
+      description    = meaningless whitespace;
+   }
+}
+
+math : context {
+   description        = math
    : inline_push {
-      regex          \= (<\?)
+      regex          \= (\$\$)
       styles []       = .keyword;
-      default_style   = .keyword
+      default_style   = .text
       : pop {
-         regex       \= (\?>)
+         regex       \= (\$\$)
          styles []    = .keyword;
+      }
+   }
+   : inline_push {
+      regex          \= (\$)
+      styles []       = .keyword;
+      default_style   = .text
+      : pop {
+         regex       \= (\$)
+         styles []    = .keyword;
+      }
+   }
+}
+
+
+text : context {
+   description        = text
+   // Meaningless whitespace
+   : include "meaninglessWhitespace";
+   : include "escape";
+   : pattern {
+      regex          \= ([^{}\\<>|`]+)
+      styles []       = .text;
+   }
+   : pattern {
+      regex          \= ([{}\\<>|`^] )
+      styles []       = .text;
+   }
+   : include "illegal";
+}
+
+string : context {
+   description        = multiline
+   : inline_push {
+      regex          \= (")
+      styles []       = .string;
+      : pop {
+         regex       \= (")
+         styles []    = .string;
+      }
+      : include "escape";
+      : pattern {
+         regex          \= ([^\\"]+)
+         styles []       = .string;
       }
    }
 }
