@@ -30,6 +30,8 @@ CPTML = Curly & Pointy Tags Markup Language
 }}
 ```
 
+![](constitution.png)
+
 Text source: https://github.com/usgpo/house-manual/blob/master/114/original-file-names/constitution.xml
 
 ### Overlapping Markup
@@ -44,6 +46,8 @@ This document has three views: the empty/default one, `t` for typography and `g`
   <(t)line|And flaky darkness breaks within the east.|(g)sentence>|(t)line>
 }
 ```
+
+![](poem.png)
 
 Text source: https://en.wikipedia.org/wiki/Overlapping_markup#Milestones
 
