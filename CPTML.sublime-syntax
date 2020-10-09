@@ -1,0 +1,497 @@
+%YAML 1.2
+---
+name: CPTML
+# See http://www.sublimetext.com/docs/3/syntax.html
+file_extensions:
+  - cptml
+scope: text.cptml
+uuid: e411492a-0880-4142-809c-6cde37d317cf
+
+variables:
+  namePart: '\p{L}[\p{L}\p{N}_-]*'
+  name: '(!)?((\()({{namePart}})(\)))?({{namePart}}(:))?({{namePart}})'
+  nameEnd: '(!)?((\()({{namePart}})(\)))?({{namePart}}(:))?({{namePart}})?'
+
+contexts:
+  prototype:
+    - include: comment
+  main:
+    # - include: declaration
+    - include: general
+  general:
+    - include: escape
+    - include: maths
+    - include: curly_tag
+    - include: pointy_tag
+    - include: fenced-code-blocks
+    - match: '[{}](?=\p{L})'
+      scope: invalid.illegal.cptml
+
+  maths:
+    - match: \$\$
+      scope: string.other.math.latex punctuation.definition.string.begin.latex
+      push:
+        - meta_scope: text.tex.latex meta.environment.math.latex
+        - include: scope:text.tex.latex#macros
+        - include: scope:text.tex.latex#math-content
+        - match: \$\$
+          scope: string.other.math.latex punctuation.definition.string.end.latex
+          pop: true
+    - match: \$
+      scope: string.other.math.latex punctuation.definition.string.begin.latex
+      push:
+        - meta_scope: text.tex.latex meta.environment.math.latex
+        - include: scope:text.tex.latex#macros
+        - include: scope:text.tex.latex#math-content
+        - match: \$
+          scope: string.other.math.latex punctuation.definition.string.end.latex
+          pop: true
+
+  pointy_tag:
+    - match: '([<]){{name}}'
+      captures:
+        1: entity.name.tag punctuation.definition.tag.begin.cptml
+        2: entity.name.tag punctuation.definition.tag.special.cptml
+        4: entity.name.tag punctuation.separator.view.cptml
+        5: entity.name.tag.view.cptml
+        6: entity.name.tag punctuation.separator.view.cptml
+        7: entity.name.tag.namespace.cptml
+        8: entity.name.tag punctuation.separator.namespace.cptml
+        9: entity.name.tag.localname.cptml
+      push:
+        - meta_scope: meta.tag.cptml
+        - match: '[>|]'
+          scope: entity.name.tag punctuation.definition.tag.end.cptml
+          pop: true
+        - include: "tag_attrs"
+    - match: '([|]){{nameEnd}}'
+      captures:
+        1: entity.name.tag punctuation.definition.tag.begin.cptml
+        2: entity.name.tag punctuation.definition.tag.special.cptml
+        4: entity.name.tag punctuation.separator.view.cptml
+        5: entity.name.tag.view.cptml
+        6: entity.name.tag punctuation.separator.view.cptml
+        7: entity.name.tag.namespace.cptml
+        8: entity.name.tag punctuation.separator.namespace.cptml
+        9: entity.name.tag.localname.cptml
+      push:
+        - meta_scope: meta.tag.cptml
+        - match: '[>]'
+          scope: entity.name.tag punctuation.definition.tag.end.cptml
+          pop: true
+        - include: "tag_attrs"
+
+  curly_tag:
+    - match: '({){{name}}'
+      captures:
+        1: entity.name.tag punctuation.definition.tag.begin.cptml
+        2: entity.name.tag punctuation.definition.tag.special.cptml
+        4: entity.name.tag punctuation.separator.view.cptml
+        5: entity.name.tag.view.cptml
+        6: entity.name.tag punctuation.separator.view.cptml
+        7: entity.name.tag.namespace.cptml
+        8: entity.name.tag punctuation.separator.namespace.cptml
+        9: entity.name.tag.localname.cptml
+      push:
+        - meta_scope: meta.tag.cptml
+        - match: '}'
+          scope: entity.name.tag punctuation.definition.tag.end.cptml
+          pop: true
+        - include: "tag_attrs"
+
+  tag_attrs:
+    - match: '{{name}}(=)(?=[^ ;}|])'
+      captures:
+        1: punctuation.definition.tag.special.cptml
+        3: punctuation.separator.view.cptml
+        4: entity.other.attribute-name.view.cptml
+        5: punctuation.separator.view.cptml
+        6: entity.other.attribute-name.namespace.cptml
+        7: punctuation.separator.namespace.cptml
+        8: entity.other.attribute-name.localname.cptml
+        9: punctuation.separator.key-value.cptml
+      push:
+        - match: '(true|false)'
+          scope: constant.language.cptml
+          pop: true
+        - match: '[0-9]+([.][0-9]+)?'
+          scope: constant.numeric.cptml
+          pop: true
+        - match: '"'
+          scope: punctuation.definition.string.begin.cptml
+          set:
+            - meta_scope: string.quoted.double.cptml
+            - meta_include_prototype: false
+            - include: escape
+            - match: '"'
+              scope: punctuation.definition.string.end.cptml
+              pop: true
+        - match: '[^;}| ]+'
+          scope: invalid.illegal.cptml
+          pop: true
+    - match: ';'
+      scope: punctuation.separator.continuation.end-attrs.cptml
+      set:
+        - match: '}'
+          scope: entity.name.tag punctuation.definition.tag.end.cptml
+          pop: true
+        - include: "general"
+    - match: '[^;}| ]+'
+      scope: invalid.illegal.cptml
+
+  # textag:
+  #   - match: '(\\)({{qualified_name}})'
+  #     captures:
+  #       1: entity.name.tag punctuation.definition.tag.begin.tlnml
+  #       3: entity.name.tag.namespace.tlnml
+  #       4: entity.name.tag.tlnml punctuation.separator.namespace.tlnml
+  #       5: entity.name.tag.localname.tlnml
+  #     push:
+  #       - meta_scope: meta.tag.tlnml
+  #       - match: '(\s|\{)'
+  #         scope: punctuation.definition.tag.end.tlnml
+  #         set:
+  #           - meta_scope: text.tlnml
+  #           - match: '(\})'
+  #             scope: punctuation.definition.tag.end.tlnml
+  #             pop: true
+  #           - include: general
+  #       - match: '\['
+  #         scope: punctuation.group.brace.start
+  #         push: texargs
+  #       - match: '#{{idname}}'
+  #         scope: entity.other.attribute-name.id
+  #       - match: '.{{idname}}'
+  #         scope: entity.other.attribute-name.class
+  # texargs:
+  #   - match: '\]'
+  #     scope: punctuation.group.brace.end
+  #     pop: true
+  #   - match: '{{qualified_name}}(=)?'
+  #     captures:
+  #       1: entity.other.attribute-name.namespace.tlnml
+  #       2: entity.other.attribute-name.tlnml punctuation.separator.namespace.tlnml
+  #       3: entity.other.attribute-name.localname.tlnml
+  #       4: punctuation.separator.key-value.tlnml
+  #     push:
+  #       - match: '(\s|(?=\]))'
+  #         pop: true
+  #       - include: double-quoted-string
+  #       - include: single-quoted-string
+  #       - match: '[^"\s\]]*'
+  #         scope: string.unquoted.tlnml
+  # xmltag:
+  #   - match: '(<)(/|)(({{name}})(\|)|)({{qualified_name}}|)'
+  #     captures:
+  #       1: entity.name.tag punctuation.definition.tag.tlnml
+  #       2: entity.name.tag punctuation.definition.tag.end.tlnml
+  #       4: entity.name.tag.view.tlnml
+  #       5: entity.name.tag.view.tlnml punctuation.definition.view.tlnml
+  #       6: entity.name.tag.namespace.tlnml
+  #       7: entity.name.tag.tlnml punctuation.separator.namespace.tlnml
+  #       8: entity.name.tag.localname.tlnml
+  #     push:
+  #       - meta_scope: meta.tag.tlnml
+  #       - match: '(>)'
+  #         scope: entity.name.tag punctuation.definition.tag.end.tlnml
+  #         pop: true
+  #       - match: '{{qualified_name}}(=)?'
+  #         captures:
+  #           1: entity.other.attribute-name.namespace.tlnml
+  #           2: entity.other.attribute-name.tlnml punctuation.separator.namespace.tlnml
+  #           3: entity.other.attribute-name.localname.tlnml
+  #           4: punctuation.separator.key-value.tlnml
+  #         push:
+  #           - match: '(\s|(?=>))'
+  #             pop: true
+  #           - include: string
+  #           - match: '[^"\s\]]*'
+  #             scope: string.unquoted.tlnml
+
+  # declaration:
+  #   - match: '(<\?)(tlnml)' #(?=\s)'
+  #     captures:
+  #       1: punctuation.definition.tag.begin.tlnml
+  #       2: keyword.declaration.tlnml
+  #     push:
+  #       - meta_scope: meta.tag.preprocessor.tlnml
+  #       - match: '\?>'
+  #         scope: punctuation.definition.tag.end.tlnml
+  #         pop: true
+  #       - match: '\s+{{qualified_name}}(=)?'
+  #         captures:
+  #           1: entity.other.attribute-name.namespace.tlnml
+  #           2: entity.other.attribute-name.tlnml punctuation.separator.namespace.tlnml
+  #           3: entity.other.attribute-name.localname.tlnml
+  #           4: punctuation.separator.key-value.tlnml
+  #       - include: double-quoted-string
+  #       - include: single-quoted-string
+  # namespace:
+  #   - match: '(<\?)(ns)'
+  #     captures:
+  #       1: punctuation.definition.tag.begin.tlnml
+  #       2: keyword.declaration.tlnml
+  #     push:
+  #       - meta_scope: meta.tag.preprocessor.tlnml
+  #       - match: '\?>'
+  #         scope: punctuation.definition.tag.end.tlnml
+  #         pop: true
+  #       - match: '\s+{{qualified_name}}(=)?'
+  #         captures:
+  #           1: entity.other.attribute-name.namespace.tlnml
+  #           2: entity.other.attribute-name.tlnml punctuation.separator.namespace.tlnml
+  #           3: entity.other.attribute-name.localname.tlnml
+  #           4: punctuation.separator.key-value.tlnml
+  #       - include: double-quoted-string
+  #       - include: single-quoted-string
+  string:
+    - match: '"'
+      scope: punctuation.definition.string.begin.tlnml
+      push:
+        - meta_include_prototype: false
+        - meta_scope: string.quoted.double.tlnml
+        - include: escape
+        - match: '"'
+          scope: punctuation.definition.string.end.tlnml
+          pop: true
+  comment:
+    - match: '/\*'
+      scope: punctuation.definition.comment.begin.tlnml
+      push:
+        - meta_scope: comment.block.tlnml
+        - include: comment
+        - match: '\*/'
+          scope: punctuation.definition.comment.end.tlnml
+          pop: true
+        - include: comment
+  escape:
+    - match: '(\\(u[a-f0-9A-F]{4}|U[a-f0-9A-F]+;|.))'
+      scope: constant.character.entity.tlnml
+
+  fenced-code-blocks:
+    - include: fenced-html
+    - include: fenced-xml
+    - include: fenced-diff
+    - include: fenced-perl
+    - include: fenced-php
+    - include: fenced-css
+    - include: fenced-less
+    - include: fenced-java
+    - include: fenced-c
+    - include: fenced-c++
+    - include: fenced-csharp
+    - include: fenced-yaml
+    - include: fenced-sql
+    - include: fenced-shell
+    - include: fenced-sass
+    - include: fenced-scss
+    - include: fenced-scala
+    - include: fenced-obj-c
+    - include: fenced-coffee
+    - include: fenced-js
+    - include: fenced-ts
+    - include: fenced-tsx
+    - include: fenced-ruby
+    - include: fenced-python
+    - include: fenced-lisp
+    - include: fenced-lua
+    - include: fenced-scheme
+    - include: fenced-swift
+    - include: fenced-clojure
+    - include: fenced-go
+    - include: fenced-kotlin
+    - include: fenced-ocaml
+    - include: fenced-reason
+    - include: fenced-haskell
+    - include: fenced-rust
+    - include: fenced-undefined
+  fenced-coffee:
+    - match: '^(\s*[`~]{3,})\s*(coffee|cjsx)\s*$'
+      embed: scope:source.coffee
+      embed_scope: markup.raw.block.cptml markup.raw.block.fenced.cptml
+      escape: ^(\1)\n
+  fenced-css:
+    - match: '^(\s*[`~]{3,})\s*(css)\s*$'
+      embed: scope:source.css
+      embed_scope: markup.raw.block.cptml markup.raw.block.fenced.cptml
+      escape: ^(\1)\n
+  fenced-diff:
+    - match: '^(\s*[`~]{3,})\s*(diff|patch)\s*$'
+      embed: scope:source.diff
+      embed_scope: markup.raw.block.cptml markup.raw.block.fenced.cptml
+      escape: ^(\1)\n
+  fenced-html:
+    - match: '^(\s*[`~]{3,})\s*(html|html5)\s*$'
+      embed: scope:text.html.basic
+      embed_scope: markup.raw.block.cptml markup.raw.block.fenced.cptml
+      escape: ^(\1)\n
+  fenced-java:
+    - match: '^(\s*[`~]{3,})\s*(java)\s*$'
+      embed: scope:source.java
+      embed_scope: markup.raw.block.cptml markup.raw.block.fenced.cptml
+      escape: ^(\1)\n
+  fenced-js:
+    - match: '^(\s*[`~]{3,})\s*(js|jsx|json|javascript)\s*$'
+      embed: scope:source.js
+      embed_scope: markup.raw.block.cptml markup.raw.block.fenced.cptml
+      escape: ^(\1)\n
+  fenced-less:
+    - match: '^(\s*[`~]{3,})\s*(less)\s*$'
+      embed: scope:source.less
+      embed_scope: markup.raw.block.cptml markup.raw.block.fenced.cptml
+      escape: ^(\1)\n
+  fenced-lisp:
+    - match: '^(\s*[`~]{3,})\s*(lisp)\s*$'
+      embed: scope:source.lisp
+      embed_scope: markup.raw.block.cptml markup.raw.block.fenced.cptml
+      escape: ^(\1)\n
+  fenced-lua:
+    - match: '^(\s*[`~]{3,})\s*(lua)\s*$'
+      embed: scope:source.lua
+      embed_scope: markup.raw.block.cptml markup.raw.block.fenced.cptml
+      escape: ^(\1)\n
+  fenced-ocaml:
+    - match: '^(\s*[`~]{3,})\s*(ocaml)\s*$'
+      embed: scope:source.ocaml
+      embed_scope: markup.raw.block.cptml markup.raw.block.fenced.cptml
+      escape: ^(\1)\n
+  fenced-obj-c:
+    - match: '^(\s*[`~]{3,})\s*(obj(ective-)?c)\s*$'
+      embed: scope:source.objc
+      embed_scope: markup.raw.block.cptml markup.raw.block.fenced.cptml
+      escape: ^(\1)\n
+  fenced-perl:
+    - match: '^(\s*[`~]{3,})\s*(perl)\s*$'
+      embed: scope:source.perl
+      embed_scope: markup.raw.block.cptml markup.raw.block.fenced.cptml
+      escape: ^(\1)\n
+  fenced-php:
+    - match: '^(\s*[`~]{3,})\s*(php)\s*$'
+      embed: scope:source.php
+      embed_scope: markup.raw.block.cptml markup.raw.block.fenced.cptml
+      escape: ^(\1)\n
+  fenced-python:
+    - match: '^(\s*[`~]{3,})\s*(py|python)\s*$'
+      embed: scope:source.python
+      embed_scope: markup.raw.block.cptml markup.raw.block.fenced.cptml
+      escape: ^(\1)\n
+  fenced-reason:
+    - match: '^(\s*[`~]{3,})\s*(re|reason)\s*$'
+      embed: scope:source.reason
+      embed_scope: markup.raw.block.cptml markup.raw.block.fenced.cptml
+      escape: ^(\1)\n
+  fenced-ruby:
+    - match: '^(\s*[`~]{3,})\s*(ruby)\s*$'
+      embed: scope:source.ruby
+      embed_scope: markup.raw.block.cptml markup.raw.block.fenced.cptml
+      escape: ^(\1)\n
+  fenced-sass:
+    - match: '^(\s*[`~]{3,})\s*(sass)\s*$'
+      embed: scope:source.sass
+      embed_scope: markup.raw.block.cptml markup.raw.block.fenced.cptml
+      escape: ^(\1)\n
+  fenced-scala:
+    - match: '^(\s*[`~]{3,})\s*(scala)\s*$'
+      embed: scope:source.scala
+      embed_scope: markup.raw.block.cptml markup.raw.block.fenced.cptml
+      escape: ^(\1)\n
+  fenced-scheme:
+    - match: '^(\s*[`~]{3,})\s*(scheme)\s*$'
+      embed: scope:source.scheme
+      embed_scope: markup.raw.block.cptml markup.raw.block.fenced.cptml
+      escape: ^(\1)\n
+  fenced-scss:
+    - match: '^(\s*[`~]{3,})\s*(scss)\s*$'
+      embed: scope:source.scss
+      embed_scope: markup.raw.block.cptml markup.raw.block.fenced.cptml
+      escape: ^(\1)\n
+  fenced-shell:
+    - match: '^(\s*[`~]{3,})\s*(sh|shell|bash)\s*$'
+      embed: scope:source.shell
+      embed_scope: markup.raw.block.cptml markup.raw.block.fenced.cptml
+      escape: ^(\1)\n
+  fenced-sql:
+    - match: '^(\s*[`~]{3,})\s*(sql)\s*$'
+      embed: scope:source.sql
+      embed_scope: markup.raw.block.cptml markup.raw.block.fenced.cptml
+      escape: ^(\1)\n
+  fenced-swift:
+    - match: '^(\s*[`~]{3,})\s*(swift)\s*$'
+      embed: scope:source.swift
+      embed_scope: markup.raw.block.cptml markup.raw.block.fenced.cptml
+      escape: ^(\1)\n
+  fenced-ts:
+    - match: '^(\s*[`~]{3,})\s*(ts|typescript)\s*$'
+      embed: scope:source.ts
+      embed_scope: markup.raw.block.cptml markup.raw.block.fenced.cptml
+      escape: ^(\1)\n
+  fenced-tsx:
+    - match: '^(\s*[`~]{3,})\s*(tsx)\s*$'
+      embed: scope:source.tsx
+      embed_scope: markup.raw.block.cptml markup.raw.block.fenced.cptml
+      escape: ^(\1)\n
+  fenced-haskell:
+    - match: '^(\s*[`~]{3,})\s*(haskell|hs)\s*$'
+      embed: scope:source.haskell
+      embed_scope: markup.raw.block.cptml markup.raw.block.fenced.cptml
+      escape: ^(\1)\n
+  fenced-rust:
+    - match: '^(\s*[`~]{3,})\s*(rust)\s*$'
+      embed: scope:source.rust
+      embed_scope: markup.raw.block.cptml markup.raw.block.fenced.cptml
+      escape: ^(\1)\n
+  fenced-undefined:
+    - match: '^(\s*[`~]{3,}).*$'
+      push:
+        - meta_scope: markup.raw.block.cptml markup.raw.block.fenced.cptml
+        - match: ^(\1)\n
+          pop: true
+  fenced-xml:
+    - match: '^(\s*[`~]{3,})\s*(xml)\s*$'
+      embed: scope:text.xml
+      embed_scope: markup.raw.block.cptml markup.raw.block.fenced.cptml
+      escape: ^(\1)\n
+  fenced-yaml:
+    - match: '^(\s*[`~]{3,})\s*(yaml)\s*$'
+      embed: scope:source.yaml
+      embed_scope: markup.raw.block.cptml markup.raw.block.fenced.cptml
+      escape: ^(\1)\n
+
+  # keywords:
+  #   # Keywords are if, else for and while.
+  #   # Note that blackslashes don't need to be escaped within single quoted
+  #   # strings in YAML. When using single quoted strings, only single quotes
+  #   # need to be escaped: this is done by using two single quotes next to each
+  #   # other.
+  #   - match: '\b(if|else|for|while)\b'
+  #     scope: keyword.control.example-c
+
+  # numbers:
+  #   - match: '\b(-)?[0-9.]+\b'
+  #     scope: constant.numeric.example-c
+
+  # strings:
+  #   # Strings begin and end with quotes, and use backslashes as an escape
+  #   # character.
+  #   - match: '"'
+  #     scope: punctuation.definition.string.begin.example-c
+  #     push: inside_string
+
+  # inside_string:
+  #   - meta_include_prototype: false
+  #   - meta_scope: string.quoted.double.example-c
+  #   - match: '\.'
+  #     scope: constant.character.escape.example-c
+  #   - match: '"'
+  #     scope: punctuation.definition.string.end.example-c
+  #     pop: true
+
+  # comments:
+  #   # Comments begin with a '//' and finish at the end of the line.
+  #   - match: '//'
+  #     scope: punctuation.definition.comment.example-c
+  #     push:
+  #       # This is an anonymous context push for brevity.
+  #       - meta_scope: comment.line.double-slash.example-c
+  #       - match: $\n?
+  #         pop: true
