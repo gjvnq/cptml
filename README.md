@@ -38,12 +38,14 @@ Text source: https://github.com/usgpo/house-manual/blob/master/114/original-file
 
 This document has three views: the empty/default one, `t` for typography and `g` for grammar.
 
+Note that ending tags can be abbreviated: `|>` (default namespace) and `|(t)>` (for view `t`).
+
 ```cptml
 {poem;
   <(t)line|<(g)sentence|I, by attorney, bless thee from thy mother,|(t)line>
   <(t)line|Who prays continually for Richmond's good.|(g)sentence>|(t)line>
-  <(t)line|<(g)sentence|So much for that.|(g)sentence><(g)sentence|—The silent hours steal on,|(t)line>
-  <(t)line|And flaky darkness breaks within the east.|(g)sentence>|(t)line>
+  <(t)line|<(g)sentence|So much for that.|(g)><(g)sentence|—The silent hours steal on,|(t)>
+  <(t)line|And flaky darkness breaks within the east.|(g)>|(t)>
 }
 ```
 
