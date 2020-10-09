@@ -1,0 +1,12 @@
+[package]
+name = "cptml"
+version = "0.1.0"
+license = "LGPL"
+authors = ["G. Queiroz <gabrieljvnq@gmail.com>"]
+edition = "2018"
+categories = ["command-line-utilities", "parser-implementations"]
+publish = false
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
