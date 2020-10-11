@@ -1,5 +1,5 @@
-pub mod pos;
 pub mod hacks;
+pub mod pos;
 pub mod raw_parser;
 
 #[cfg(test)]
