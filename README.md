@@ -135,7 +135,7 @@ The following selectors are available:
 * `.`: context node.
 * `..`: parent of the context node.
 * `*`: all children of the context node (except `!text`).
-* `node()`: all children of the context node including text.
+* `node()`, `**`: all children of the context node including text.
 * `text()`: all text children of the context node.
 * `inner-text()`: a single string with all the text under the context node.
 * `tag`: all child elements with a name matching the `tag`.
