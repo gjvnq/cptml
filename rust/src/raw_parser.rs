@@ -114,8 +114,10 @@ impl RawParser {
     }
 
     fn result_text(&mut self) {
-        self.result = Some(RawToken::InlineText(self.span, self.txt.clone()));
-        self.txt.clear();
+        if self.txt.len() > 0 {
+            self.result = Some(RawToken::InlineText(self.span, self.txt.clone()));
+            self.txt.clear();
+        }
     }
 
     fn mode_text(&mut self, c: char) {
@@ -148,7 +150,6 @@ mod tests {
     fn test_1() {
         let s = "";
         let mut parser = RawParser::new(Box::new(s.bytes()));
-        assert_eq!(parser.next(), Some(RawToken::InlineText(Span::new2(0,1,1,0,1,1), "".to_string())));
         assert_eq!(parser.next(), None);
 
         let s = "a";
@@ -159,16 +160,17 @@ mod tests {
         let s = "a{";
         let mut parser = RawParser::new(Box::new(s.bytes()));
         assert_eq!(parser.next(), Some(RawToken::InlineText(Span::new2(0,1,1,1,1,2), "a".to_string())));
-        // assert_eq!(parser.next(), None);
+        assert_eq!(parser.next(), None);
 
         let s = "hello world! {";
         let mut parser = RawParser::new(Box::new(s.bytes()));
         assert_eq!(parser.next(), Some(RawToken::InlineText(Span::new2(0,1,1,13,1,14), "hello world! ".to_string())));
-        // assert_eq!(parser.next(), None);
+        assert_eq!(parser.next(), None);
 
         let s = "hello world!{ ";
         let mut parser = RawParser::new(Box::new(s.bytes()));
         assert_eq!(parser.next(), Some(RawToken::InlineText(Span::new2(0,1,1,14,1,15), "hello world!{ ".to_string())));
+        assert_eq!(parser.next(), None);
 
         let s = "hello world!{!";
         let mut parser = RawParser::new(Box::new(s.bytes()));
