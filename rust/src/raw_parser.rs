@@ -3,14 +3,10 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
-use crate::hacks::{bytes_to_char, char_size};
-use crate::pos::Position;
+use std::mem;
+use crate::peek_reader::PeekReader;
 use crate::pos::Span;
 use core::fmt::Debug;
-
-const READ_BUF_SIZE: usize = 64;
-const PEEK_RESERVE: usize = 4;
-const READ_LIMIT: usize = READ_BUF_SIZE - PEEK_RESERVE;
 
 #[derive(Debug)]
 pub struct RawName {
@@ -20,7 +16,7 @@ pub struct RawName {
     pub local: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone,PartialEq,Eq)]
 pub enum RawToken {
     CodeBlock(Span, String),
     InlineText(Span, String),
@@ -29,12 +25,29 @@ pub enum RawToken {
     AttributeName(Span, String),
     BooleanValue(Span, bool),
     IntegerValue(Span, i64),
-    FloatValue(Span, f64),
+    FloatValue(Span, i64, i64),
     StringValue(Span, String),
     CurlyTagStart(Span, String),
     CurlyTagEnd(Span),
     PointyTagStart(Span, String),
     PointyTagEnd(Span, String),
+}
+
+#[derive(Debug,Clone,Copy)]
+enum State {
+    CodeBlock,
+    InlineText,
+    InlineMathText,
+    DisplayMathText,
+    AttributeName,
+    BooleanValue,
+    IntegerValue,
+    FloatValue,
+    StringValue,
+    CurlyTagStart,
+    CurlyTagEnd,
+    PointyTagStart,
+    PointyTagEnd,
 }
 
 pub trait ByteReader: Debug + Iterator<Item = u8> {}
@@ -43,81 +56,87 @@ impl ByteReader for std::str::Bytes<'_> {}
 
 #[derive(Debug)]
 pub struct RawParser {
-    buf: [char; READ_BUF_SIZE],
-    buf_pos: usize,
-    pos: Position,
-    src: Box<dyn ByteReader>,
-    eof: bool,
+    src: Box<PeekReader>,
+    txt: String,
+    tmp: String,
+    span: Span,
+    state: State,
+    result: Option<RawToken>,
+    in_escape: bool,
+    done: bool,
+    clean: bool,
 }
 
 impl RawParser {
     pub fn new(reader: Box<dyn ByteReader>) -> Self {
-        let mut ans = RawParser {
-            buf: ['\0'; READ_BUF_SIZE],
-            buf_pos: 0,
-            eof: false,
-            pos: Position::new(),
-            src: reader,
-        };
-        ans.read_cycle();
-        ans
+        RawParser {
+            src: Box::new(PeekReader::new(reader)),
+            txt: "".to_string(),
+            tmp: "".to_string(),
+            state: State::InlineText,
+            span: Span::new(),
+            result: None,
+            in_escape: false,
+            done: false,
+            clean: true,
+        }
     }
 
-    fn peek(&mut self, dist: usize) -> char {
-        if 0 == dist || dist > 3 {
-            panic!("RawParser::peek(n={}), n is limited to 3", dist);
+    fn until_yield(&mut self) {
+        self.result = None;
+        if self.done {
+            return
         }
-        self.buf[self.buf_pos + dist]
+        while self.result.is_none() {
+            let c = self.src.pop();
+            // Finish if EOF
+            if c == '\0' {
+                self.done = true;
+                match &self.state {
+                    State::InlineText => self.result_text(),
+                    _ => panic!("unexpected state")
+                }
+                return
+            }
+            // println!("{:?}", self.src.get_pos());
+            if self.clean {
+                self.clean = false;
+                if self.src.get_pos().byte != 1 {
+                    self.span = Span::new_from(self.src.get_pos());
+                }
+            }
+            // Process new char
+            match &self.state {
+                State::InlineText => self.mode_text(c),
+                _ => panic!("unexpected state")
+            }
+        }
     }
 
-    fn pop(&mut self) -> char {
-        if self.buf_pos > READ_LIMIT {
-            self.read_cycle()
-        }
-        let ans = self.buf[self.buf_pos];
-        self.buf_pos += 1;
-        self.pos.step(ans);
-        ans
+    fn result_text(&mut self) {
+        self.result = Some(RawToken::InlineText(self.span, self.txt.clone()));
+        self.txt.clear();
     }
 
-    fn read_cycle(&mut self) {
-        // Copy chars we had reserved for peeking to the begining of the buffer
-        if self.pos.byte != 0 {
-            let mut i = 0;
-            let mut j = self.buf_pos;
-            while j < self.buf.len() {
-                self.buf[i] = self.buf[j];
-                i += 1;
-                j += 1;
-            }
+    fn mode_text(&mut self, c: char) {
+        if c == '{' && !self.src.peek(1).is_whitespace() {
+            self.result_text();
+        } else {
+            self.txt.push(c);
+            self.span.step(c);
         }
+    }
+}
 
-        let mut i = match self.pos.byte {
-            0 => 0,
-            _ => self.buf.len() - self.buf_pos,
-        };
-        self.buf_pos = 0;
-        let mut buf: [u8; 4] = [0; 4];
-        while i < self.buf.len() {
-            // Read a single byte
-            let res = self.src.next();
-            if res.is_none() {
-                self.eof = true;
-                buf[0] = b'\0';
-            } else {
-                buf[0] = res.unwrap();
-            }
-            // Find out how many bytes we will need to read for this character
-            let s = char_size(buf[0]);
-            for j in 1..s {
-                // Read more bytes if necessary (code ponts above 007F)
-                let res = self.src.next();
-                buf[j] = res.unwrap();
-            }
-            // Decode the character and save it
-            self.buf[i] = bytes_to_char(&buf).0;
-            i += 1;
-        }
+impl Iterator for RawParser {
+    type Item = RawToken;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.until_yield();
+
+        let mut ans: Option<RawToken> = None;
+        mem::swap(&mut self.result, &mut ans);
+        return ans;
     }
 }
 
@@ -126,32 +145,33 @@ mod tests {
     use crate::raw_parser::*;
 
     #[test]
-    fn it_works() {
-        let s = "hello world!§......................................................................§ªº冬";
+    fn test_1() {
+        let s = "";
         let mut parser = RawParser::new(Box::new(s.bytes()));
-        assert_eq!('h', parser.pop());
-        assert_eq!('e', parser.pop());
-        assert_eq!('l', parser.pop());
-        assert_eq!('l', parser.pop());
-        assert_eq!('o', parser.pop());
-        assert_eq!(' ', parser.pop());
-        assert_eq!('w', parser.pop());
-        assert_eq!('o', parser.pop());
-        assert_eq!('r', parser.pop());
-        assert_eq!('l', parser.pop());
-        assert_eq!('d', parser.pop());
-        assert_eq!('!', parser.pop());
-        assert_eq!('§', parser.pop());
-        for i in 0..70 {
-            assert_eq!('.', parser.pop());
-        }
-        assert_eq!('ª', parser.peek(1));
-        assert_eq!('º', parser.peek(2));
-        assert_eq!('冬', parser.peek(3));
-        assert_eq!('§', parser.pop());
-        assert_eq!('ª', parser.pop());
-        assert_eq!('º', parser.pop());
-        assert_eq!('冬', parser.pop());
-        assert_eq!('\0', parser.pop());
+        assert_eq!(parser.next(), Some(RawToken::InlineText(Span::new2(0,1,1,0,1,1), "".to_string())));
+        assert_eq!(parser.next(), None);
+
+        let s = "a";
+        let mut parser = RawParser::new(Box::new(s.bytes()));
+        assert_eq!(parser.next(), Some(RawToken::InlineText(Span::new2(0,1,1,1,1,2), "a".to_string())));
+        assert_eq!(parser.next(), None);
+
+        let s = "a{";
+        let mut parser = RawParser::new(Box::new(s.bytes()));
+        assert_eq!(parser.next(), Some(RawToken::InlineText(Span::new2(0,1,1,1,1,2), "a".to_string())));
+        // assert_eq!(parser.next(), None);
+
+        let s = "hello world! {";
+        let mut parser = RawParser::new(Box::new(s.bytes()));
+        assert_eq!(parser.next(), Some(RawToken::InlineText(Span::new2(0,1,1,13,1,14), "hello world! ".to_string())));
+        // assert_eq!(parser.next(), None);
+
+        let s = "hello world!{ ";
+        let mut parser = RawParser::new(Box::new(s.bytes()));
+        assert_eq!(parser.next(), Some(RawToken::InlineText(Span::new2(0,1,1,14,1,15), "hello world!{ ".to_string())));
+
+        let s = "hello world!{!";
+        let mut parser = RawParser::new(Box::new(s.bytes()));
+        assert_eq!(parser.next(), Some(RawToken::InlineText(Span::new2(0,1,1,12,1,13), "hello world!".to_string())));
     }
 }

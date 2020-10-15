@@ -1,6 +1,7 @@
 pub mod hacks;
 pub mod pos;
 pub mod raw_parser;
+pub mod peek_reader;
 
 #[cfg(test)]
 mod tests {
