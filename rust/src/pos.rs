@@ -1,11 +1,11 @@
-#[derive(Debug,Clone,Copy,PartialEq,Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Position {
     pub byte: usize,
     pub line: usize,
     pub col: usize,
 }
 
-#[derive(Debug,Clone,Copy,PartialEq,Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Span {
     pub start: Position,
     pub end: Position,
@@ -18,7 +18,14 @@ impl Span {
             end: Position::new(),
         }
     }
-    pub fn new2(start_byte: usize, start_line: usize, start_col: usize, end_byte: usize, end_line: usize, end_col: usize) -> Self {
+    pub fn new2(
+        start_byte: usize,
+        start_line: usize,
+        start_col: usize,
+        end_byte: usize,
+        end_line: usize,
+        end_col: usize,
+    ) -> Self {
         Span {
             start: Position::new2(start_byte, start_line, start_col),
             end: Position::new2(end_byte, end_line, end_col),

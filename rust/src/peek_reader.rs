@@ -1,6 +1,6 @@
-use crate::raw_parser::ByteReader;
 use crate::hacks::{bytes_to_char, char_size};
 use crate::pos::Position;
+use crate::raw_parser::ByteReader;
 use core::fmt::Debug;
 
 const READ_BUF_SIZE: usize = 64;
