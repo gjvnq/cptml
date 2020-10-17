@@ -33,7 +33,7 @@ pub enum RawToken {
     PointyTagEnd(Span, String),
 }
 
-#[derive(Debug,Clone,Copy)]
+#[derive(Debug,Clone,Copy,PartialEq,Eq)]
 enum State {
     CodeBlock,
     InlineText,
@@ -50,6 +50,13 @@ enum State {
     PointyTagEnd,
 }
 
+#[derive(Debug,Clone,Copy,PartialEq,Eq)]
+enum EscapeState {
+    None,
+    Slash,
+    Unicode
+}
+
 pub trait ByteReader: Debug + Iterator<Item = u8> {}
 
 impl ByteReader for std::str::Bytes<'_> {}
@@ -62,7 +69,7 @@ pub struct RawParser {
     span: Span,
     state: State,
     result: Option<RawToken>,
-    in_escape: bool,
+    escape: EscapeState,
     done: bool,
     clean: bool,
 }
@@ -76,7 +83,7 @@ impl RawParser {
             state: State::InlineText,
             span: Span::new(),
             result: None,
-            in_escape: false,
+            escape: EscapeState::None,
             done: false,
             clean: true,
         }
@@ -121,11 +128,22 @@ impl RawParser {
     }
 
     fn mode_text(&mut self, c: char) {
-        if c == '{' && !self.src.peek(1).is_whitespace() {
+        if (c == '{' || c == '}' || c == '<' || c == '>') && self.escape == EscapeState::None && !self.src.peek(1).is_whitespace() {
             self.result_text();
         } else {
             self.txt.push(c);
             self.span.step(c);
+            if c == '\\' && self.escape == EscapeState::None {
+                self.escape = EscapeState::Slash;
+            } else if self.escape == EscapeState::Slash {
+                if c == 'u' {
+                    self.escape = EscapeState::Unicode;
+                } else {
+                    self.escape = EscapeState::None;
+                }
+            } else if self.escape == EscapeState::Slash && c == ';' {
+                self.escape = EscapeState::None;
+            }
         }
     }
 }
@@ -167,13 +185,17 @@ mod tests {
         assert_eq!(parser.next(), Some(RawToken::InlineText(Span::new2(0,1,1,13,1,14), "hello world! ".to_string())));
         assert_eq!(parser.next(), None);
 
-        let s = "hello world!{ ";
+        let s = "hello > world!{ ";
         let mut parser = RawParser::new(Box::new(s.bytes()));
-        assert_eq!(parser.next(), Some(RawToken::InlineText(Span::new2(0,1,1,14,1,15), "hello world!{ ".to_string())));
+        assert_eq!(parser.next(), Some(RawToken::InlineText(Span::new2(0,1,1,16,1,17), "hello > world!{ ".to_string())));
         assert_eq!(parser.next(), None);
 
-        let s = "hello world!{!";
+        let s = "hello } world!{!";
         let mut parser = RawParser::new(Box::new(s.bytes()));
-        assert_eq!(parser.next(), Some(RawToken::InlineText(Span::new2(0,1,1,12,1,13), "hello world!".to_string())));
+        assert_eq!(parser.next(), Some(RawToken::InlineText(Span::new2(0,1,1,14,1,15), "hello } world!".to_string())));
+
+        let s = "\\t} \\{\\s ";
+        let mut parser = RawParser::new(Box::new(s.bytes()));
+        assert_eq!(parser.next(), Some(RawToken::InlineText(Span::new2(0,1,1,9,1,10), "\\t} \\{\\s ".to_string())));
     }
 }
