@@ -1,6 +1,6 @@
+use crate::hacks::ByteReader;
 use crate::hacks::{bytes_to_char, char_size};
 use crate::pos::Position;
-use crate::hacks::ByteReader;
 use core::fmt::Debug;
 
 const READ_BUF_SIZE: usize = 64;
@@ -21,7 +21,7 @@ impl PeekReader {
     pub fn new(reader: Box<dyn ByteReader>) -> Self {
         let mut ans = PeekReader {
             buf: ['\0'; READ_BUF_SIZE],
-            buf_pos: 1,
+            buf_pos: 0,
             eof: false,
             pos: Position::new(),
             src: reader,
@@ -34,13 +34,22 @@ impl PeekReader {
         self.pos
     }
 
+    // 0 is the element you have just popped.
     pub fn peek(&mut self, dist: isize) -> char {
-        if !(-PEEK_RESERVE_I <= dist && dist <= PEEK_RESERVE_I) {
-            panic!("PeekReader::peek(n={}), n must be between {} and {}", dist, -PEEK_RESERVE_I, PEEK_RESERVE);
+        if !(-PEEK_RESERVE_I + 1 <= dist && dist <= PEEK_RESERVE_I) {
+            panic!(
+                "PeekReader::peek(n={}), n must be between {} and {}",
+                dist,
+                -PEEK_RESERVE_I + 1,
+                PEEK_RESERVE
+            );
         }
-        let tmp = (self.buf_pos) as isize + dist;
+        let tmp = (self.buf_pos) as isize + dist - 1;
         if tmp < 0 {
-            panic!("Something went horribly wrong: dist={} buf_pos={} tmp={} {:?}", dist, self.buf_pos, tmp, self);
+            panic!(
+                "Something went horribly wrong: dist={} buf_pos={} tmp={} {:?}",
+                dist, self.buf_pos, tmp, self
+            );
         }
         self.buf[tmp as usize]
     }
@@ -106,9 +115,12 @@ mod tests {
     fn it_works() {
         let s = "hello world!§abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ\n1§ªº冬";
         let mut parser = PeekReader::new(Box::new(s.bytes()));
+        assert_eq!('\0', parser.peek(-3));
+        assert_eq!('\0', parser.peek(-2));
         assert_eq!('\0', parser.peek(-1));
-        assert_eq!('h', parser.peek(0));
-        assert_eq!('e', parser.peek(1));
+        assert_eq!('\0', parser.peek(0));
+        println!("{:?}", parser);
+        assert_eq!('h', parser.peek(1));
         assert_eq!('h', parser.pop());
         assert_eq!('e', parser.pop());
         assert_eq!('l', parser.pop());
@@ -125,17 +137,16 @@ mod tests {
         for c in "abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ".chars() {
             assert_eq!(c, parser.pop());
         }
-            // println!("{:?}", parser);
+        // println!("{:?}", parser);
         assert_eq!('\n', parser.pop());
-        assert_eq!('X', parser.peek(-4));
-        assert_eq!('Y', parser.peek(-3));
-        assert_eq!('Z', parser.peek(-2));
-        assert_eq!('\n', parser.peek(-1));
-        assert_eq!('1', parser.peek(0));
-        assert_eq!('§', parser.peek(1));
-        assert_eq!('ª', parser.peek(2));
-        assert_eq!('º', parser.peek(3));
-        assert_eq!('冬', parser.peek(4));
+        assert_eq!('X', parser.peek(-3));
+        assert_eq!('Y', parser.peek(-2));
+        assert_eq!('Z', parser.peek(-1));
+        assert_eq!('\n', parser.peek(0));
+        assert_eq!('1', parser.peek(1));
+        assert_eq!('§', parser.peek(2));
+        assert_eq!('ª', parser.peek(3));
+        assert_eq!('º', parser.peek(4));
         assert_eq!('1', parser.pop());
         assert_eq!('§', parser.pop());
         assert_eq!('ª', parser.pop());
