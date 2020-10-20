@@ -69,9 +69,7 @@ impl PeekReader {
         if self.pos.byte != 0 {
             let mut i = 0;
             let mut j = self.buf_pos - PEEK_RESERVE;
-            println!("j = {}", j);
             while j < self.buf.len() {
-                println!("{} <- {}", self.buf[i], self.buf[j]);
                 self.buf[i] = self.buf[j];
                 i += 1;
                 j += 1;
@@ -119,7 +117,6 @@ mod tests {
         assert_eq!('\0', parser.peek(-2));
         assert_eq!('\0', parser.peek(-1));
         assert_eq!('\0', parser.peek(0));
-        println!("{:?}", parser);
         assert_eq!('h', parser.peek(1));
         assert_eq!('h', parser.pop());
         assert_eq!('e', parser.pop());
@@ -137,7 +134,6 @@ mod tests {
         for c in "abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ".chars() {
             assert_eq!(c, parser.pop());
         }
-        // println!("{:?}", parser);
         assert_eq!('\n', parser.pop());
         assert_eq!('X', parser.peek(-3));
         assert_eq!('Y', parser.peek(-2));

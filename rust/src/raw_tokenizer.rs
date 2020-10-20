@@ -92,22 +92,15 @@ impl RawTokenizer {
         }
 
         self.span = Span::new_from(self.src.get_pos());
-        println!("New span: {}-{}", self.span.start.col, self.span.end.col);
         while self.result.is_none() {
             let c = match self.repeat_c {
                 false => self.src.pop(),
                 true => self.src.peek(0),
             };
-            println!("repeat_c = {} c = {:?}", self.repeat_c, c);
             self.repeat_c = false;
-            println!(
-                "{:?} {}-{} {:?} {:?}",
-                c, self.span.start.col, self.span.end.col, self.state, self.txt
-            );
             // Finish if EOF
             if c == '\0' {
                 self.done = true;
-                println!("END");
                 match &self.state {
                     State::InlineText(substate) => self.result_text(*substate),
                     State::CurlyTagStart => self.result_curly_start(),
@@ -128,13 +121,6 @@ impl RawTokenizer {
                 _ => panic!("unexpected state: {:?}", self.state),
             }
         }
-        println!(
-            "next state: {:?} {} {:?}",
-            self.state,
-            self.txt.len(),
-            self.txt
-        );
-        println!("yield: {:?}", self.result);
     }
 
     fn result_pointy_end(&mut self) {}
@@ -152,7 +138,6 @@ impl RawTokenizer {
 
     fn mode_curly_end(&mut self, c: char) {
         self.span.step(c);
-        println!("{} {}-{}", c, self.span.start.col, self.span.end.col);
         self.state = State::InlineText(TextEscapeState::None);
         self.result_curly_end();
     }
@@ -183,7 +168,6 @@ impl RawTokenizer {
     }
 
     fn result_text(&mut self, escape: TextEscapeState) {
-        println!("> {:?}", self.txt);
         if self.txt.len() > 0 {
             self.result = Some(RawToken::InlineText(self.span, self.txt.clone()));
             self.txt.clear();
@@ -196,20 +180,10 @@ impl RawTokenizer {
         let last_c = self.src.peek(-1);
         let next_c = self.src.peek(1);
         let between_spaces = (next_c == ' ' || next_c == '\0') && last_c == ' ';
-        println!("::{:?} {:?} {:?}", last_c, c, next_c);
-        println!(
-            "::{:?} {:?} {:?} ({:?}) {:?}",
-            self.src.peek(-3),
-            self.src.peek(-2),
-            self.src.peek(-1),
-            self.src.peek(0),
-            self.src.peek(1)
-        );
         if (c == '{' || c == '}' || c == '<' || c == '|')
             && escape == TextEscapeState::None
             && !between_spaces
         {
-            println!("::{:?} {:?} {:?}", last_c, c, next_c);
             self.result_text(escape);
             match c {
                 '{' => self.state = State::CurlyTagStart,
