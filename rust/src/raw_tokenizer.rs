@@ -3,6 +3,8 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
+use crate::hacks::is_valid_id_first_char;
+use crate::hacks::is_valid_id_next_char;
 use crate::hacks::ByteReader;
 use crate::peek_reader::PeekReader;
 use crate::pos::Span;
@@ -34,16 +36,17 @@ pub enum RawToken {
     PointyTagEnd(Span, String),
 }
 
+type GotFirstLetter = bool;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum State {
     CodeBlock,
     InlineText(TextEscapeState),
     InlineMathText,
     DisplayMathText,
-    AttributeName,
+    AttributeName(GotFirstLetter), // TODO: add another substate for curly vs pointy
     BooleanValue,
-    IntegerValue,
-    FloatValue,
+    NumericValue,
     StringValue,
     CurlyTagStart,
     CurlyTagEnd,
@@ -107,6 +110,7 @@ impl RawTokenizer {
                     State::CurlyTagEnd => self.result_curly_end(),
                     State::PointyTagStart => self.result_pointy_start(),
                     State::PointyTagEnd => self.result_pointy_end(),
+                    State::AttributeName(_) => self.result_attribute_name(),
                     _ => panic!("unexpected state: {:?}", self.state),
                 }
                 return;
@@ -118,8 +122,65 @@ impl RawTokenizer {
                 State::CurlyTagEnd => self.mode_curly_end(c),
                 State::PointyTagStart => self.mode_pointy_start(c),
                 State::PointyTagEnd => self.mode_pointy_end(c),
+                State::AttributeName(substate) => self.mode_attribute_name(c, *substate),
                 _ => panic!("unexpected state: {:?}", self.state),
             }
+        }
+    }
+
+    fn result_attribute_name(&mut self) {
+        self.result = Some(RawToken::AttributeName(self.span, self.txt.clone()));
+    }
+
+    fn mode_attribute_name(&mut self, c: char, substate: bool) {
+        let mut got_first_letter = substate;
+
+        let id_char = match got_first_letter {
+            false => is_valid_id_first_char(c),
+            true => is_valid_id_next_char(c)
+        };
+        if !got_first_letter {
+            if id_char {
+                got_first_letter = true;
+                self.state = State::AttributeName(got_first_letter);
+            } else if !c.is_whitespace() {
+                // attribute names can't begin with digits
+                panic!("unexpected character {:?} at {:?}", c, self.span.end);
+            }
+        }
+        if id_char || c == '=' || !got_first_letter || c == ';' {
+            self.txt.push(c);
+            self.span.step(c);
+        }
+
+        if c == '=' || (c.is_whitespace() && got_first_letter) {
+            self.result_attribute_name();
+            let next_c = self.src.peek(1);
+            if next_c == '\"' {
+                self.state = State::StringValue;
+            } else if next_c == 'f' || next_c == 't' {
+                self.state = State::BooleanValue;
+            } else if next_c.is_ascii_digit() || next_c == '.' {
+                self.state = State::NumericValue;
+            } else if c.is_whitespace() {
+                self.state = State::AttributeName(false);
+            } else {
+                panic!("unexpected character {:?} at {:?}", c, self.src.get_pos());
+            }
+        } else if c == ';' || c == '}' || c == '>' {
+            self.state = match c {
+                ';' => State::InlineText(TextEscapeState::None),
+                '}' => State::CurlyTagEnd,
+                '>' => State::PointyTagEnd,
+                _ => unreachable!(),
+            };
+            self.repeat_c = match c {
+                ';' => false,
+                _ => true
+            };
+            self.result_attribute_name();
+        } else if !id_char {
+            panic!("unexpected character {:?} at {:?}", c, self.span.end);
         }
     }
 
@@ -133,7 +194,6 @@ impl RawTokenizer {
 
     fn result_curly_end(&mut self) {
         self.result = Some(RawToken::CurlyTagEnd(self.span));
-        self.txt.clear();
     }
 
     fn mode_curly_end(&mut self, c: char) {
@@ -144,10 +204,17 @@ impl RawTokenizer {
 
     fn result_curly_start(&mut self) {
         self.result = Some(RawToken::CurlyTagStart(self.span, self.txt.clone()));
-        self.txt.clear();
     }
 
     fn mode_curly_start(&mut self, c: char) {
+        let last_c = self.src.peek(-1);
+        if last_c.is_whitespace() && c.is_alphabetic() && self.txt.len() > 0 {
+            println!("{:?} {:?} {:?}", self.txt, last_c, c);
+            self.result_curly_start();
+            self.state = State::AttributeName(true);
+            self.repeat_c = true;
+            return;
+        }
         if c != '}' {
             self.txt.push(c);
             self.span.step(c);
@@ -170,7 +237,6 @@ impl RawTokenizer {
     fn result_text(&mut self, escape: TextEscapeState) {
         if self.txt.len() > 0 {
             self.result = Some(RawToken::InlineText(self.span, self.txt.clone()));
-            self.txt.clear();
         }
     }
 
@@ -218,6 +284,7 @@ impl Iterator for RawTokenizer {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.until_yield();
+        self.txt.clear();
 
         let mut ans: Option<RawToken> = None;
         mem::swap(&mut self.result, &mut ans);
@@ -314,6 +381,95 @@ mod tests {
             Some(RawToken::CurlyTagStart(
                 Span::new2(5, 1, 5, 10, 1, 10),
                 "{icon".to_string()
+            ))
+        );
+        assert_eq!(
+            parser.next(),
+            Some(RawToken::CurlyTagEnd(Span::new2(10, 1, 10, 11, 1, 11)))
+        );
+        assert_eq!(
+            parser.next(),
+            Some(RawToken::CurlyTagStart(
+                Span::new2(10, 1, 10, 14, 1, 14),
+                "{em;".to_string()
+            ))
+        );
+        assert_eq!(
+            parser.next(),
+            Some(RawToken::InlineText(
+                Span::new2(14, 1, 14, 19, 1, 19),
+                " hi! ".to_string()
+            ))
+        );
+        assert_eq!(
+            parser.next(),
+            Some(RawToken::CurlyTagEnd(Span::new2(20, 1, 20, 21, 1, 21)))
+        );
+        assert_eq!(
+            parser.next(),
+            Some(RawToken::InlineText(
+                Span::new2(20, 1, 20, 21, 2, 0),
+                "\n".to_string()
+            ))
+        );
+        assert_eq!(
+            parser.next(),
+            Some(RawToken::CurlyTagStart(
+                Span::new2(22, 2, 1, 27, 2, 6),
+                "{em ;".to_string()
+            ))
+        );
+        assert_eq!(
+            parser.next(),
+            Some(RawToken::InlineText(
+                Span::new2(26, 2, 5, 32, 2, 11),
+                " Hi!\\s".to_string()
+            ))
+        );
+        assert_eq!(
+            parser.next(),
+            Some(RawToken::CurlyTagEnd(Span::new2(33, 2, 12, 34, 2, 13)))
+        );
+        assert_eq!(
+            parser.next(),
+            Some(RawToken::InlineText(
+                Span::new2(33, 2, 12, 34, 2, 13),
+                " ".to_string()
+            ))
+        );
+        assert_eq!(parser.next(), None);
+    }
+
+    #[test]
+    fn test_3() {
+        let s = "abc {icon bool_attr id=\"abc\" num=1 val=.5; text}{end id=\"e\"}";
+        let mut parser = RawTokenizer::new(Box::new(s.bytes()));
+        assert_eq!(
+            parser.next(),
+            Some(RawToken::InlineText(
+                Span::new2(0, 1, 0, 4, 1, 4),
+                "abc ".to_string()
+            ))
+        );
+        assert_eq!(
+            parser.next(),
+            Some(RawToken::CurlyTagStart(
+                Span::new2(5, 1, 5, 11, 1, 11),
+                "{icon ".to_string()
+            ))
+        );
+        assert_eq!(
+            parser.next(),
+            Some(RawToken::AttributeName(
+                Span::new2(11, 1, 11, 20, 1, 20),
+                "bool_attr".to_string()
+            ))
+        );
+        assert_eq!(
+            parser.next(),
+            Some(RawToken::AttributeName(
+                Span::new2(20, 1, 20, 23, 1, 23),
+                "id=".to_string()
             ))
         );
         assert_eq!(

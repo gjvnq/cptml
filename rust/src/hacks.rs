@@ -4,6 +4,14 @@ pub trait ByteReader: Debug + Iterator<Item = u8> {}
 
 impl ByteReader for std::str::Bytes<'_> {}
 
+pub fn is_valid_id_first_char(c: char) -> bool {
+    c.is_alphabetic()
+}
+
+pub fn is_valid_id_next_char(c: char) -> bool {
+    c == '_' || c.is_alphanumeric()
+}
+
 pub fn bytes_to_char(v: &[u8]) -> (char, usize) {
     let mut ans: u32;
     let size: usize;
