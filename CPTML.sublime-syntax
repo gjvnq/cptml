@@ -21,11 +21,18 @@ contexts:
   general:
     - include: escape
     - include: maths
+    - include: special_cases
     - include: curly_tag
     - include: pointy_tag
     - include: fenced-code-blocks
     - match: '[{}](?=\p{L})'
       scope: invalid.illegal.cptml
+
+  special_cases:
+    - match: ' { '
+      scope:
+    - match: ' } '
+      scope:
 
   maths:
     - match: \$\$
@@ -132,6 +139,7 @@ contexts:
     - match: ';'
       scope: punctuation.separator.continuation.end-attrs.cptml
       set:
+        - include: special_cases
         - match: '}'
           scope: entity.name.tag punctuation.definition.tag.end.cptml
           pop: true
