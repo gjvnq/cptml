@@ -1,3 +1,9 @@
+use core::fmt::Debug;
+
+pub trait ByteReader: Debug + Iterator<Item = u8> {}
+
+impl ByteReader for std::str::Bytes<'_> {}
+
 pub fn bytes_to_char(v: &[u8]) -> (char, usize) {
     let mut ans: u32;
     let size: usize;

@@ -3,6 +3,7 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
+use crate::hacks::ByteReader;
 use crate::peek_reader::PeekReader;
 use crate::pos::Span;
 use core::fmt::Debug;
@@ -57,12 +58,8 @@ enum TextEscapeState {
     Unicode,
 }
 
-pub trait ByteReader: Debug + Iterator<Item = u8> {}
-
-impl ByteReader for std::str::Bytes<'_> {}
-
 #[derive(Debug)]
-pub struct RawParser {
+pub struct RawTokenizer {
     src: Box<PeekReader>,
     txt: String,
     tmp: String,
@@ -74,9 +71,9 @@ pub struct RawParser {
     last_c: char,
 }
 
-impl RawParser {
+impl RawTokenizer {
     pub fn new(reader: Box<dyn ByteReader>) -> Self {
-        RawParser {
+        RawTokenizer {
             src: Box::new(PeekReader::new(reader)),
             txt: "".to_string(),
             tmp: "".to_string(),
@@ -234,7 +231,7 @@ impl RawParser {
     }
 }
 
-impl Iterator for RawParser {
+impl Iterator for RawTokenizer {
     type Item = RawToken;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -248,16 +245,16 @@ impl Iterator for RawParser {
 
 #[cfg(test)]
 mod tests {
-    use crate::raw_parser::*;
+    use crate::raw_tokenizer::*;
 
     #[test]
     fn test_1() {
         let s = "";
-        let mut parser = RawParser::new(Box::new(s.bytes()));
+        let mut parser = RawTokenizer::new(Box::new(s.bytes()));
         assert_eq!(parser.next(), None);
 
         let s = "a";
-        let mut parser = RawParser::new(Box::new(s.bytes()));
+        let mut parser = RawTokenizer::new(Box::new(s.bytes()));
         assert_eq!(
             parser.next(),
             Some(RawToken::InlineText(
@@ -268,7 +265,7 @@ mod tests {
         assert_eq!(parser.next(), None);
 
         let s = "a{";
-        let mut parser = RawParser::new(Box::new(s.bytes()));
+        let mut parser = RawTokenizer::new(Box::new(s.bytes()));
         assert_eq!(
             parser.next(),
             Some(RawToken::InlineText(
@@ -278,7 +275,7 @@ mod tests {
         );
 
         let s = "hello world! {";
-        let mut parser = RawParser::new(Box::new(s.bytes()));
+        let mut parser = RawTokenizer::new(Box::new(s.bytes()));
         assert_eq!(
             parser.next(),
             Some(RawToken::InlineText(
@@ -288,7 +285,7 @@ mod tests {
         );
 
         let s = "hello > world!{ ";
-        let mut parser = RawParser::new(Box::new(s.bytes()));
+        let mut parser = RawTokenizer::new(Box::new(s.bytes()));
         assert_eq!(
             parser.next(),
             Some(RawToken::InlineText(
@@ -298,7 +295,7 @@ mod tests {
         );
 
         let s = "hello } world!{!";
-        let mut parser = RawParser::new(Box::new(s.bytes()));
+        let mut parser = RawTokenizer::new(Box::new(s.bytes()));
         assert_eq!(
             parser.next(),
             Some(RawToken::InlineText(
@@ -308,7 +305,7 @@ mod tests {
         );
 
         let s = "\\t } \\{\\s ";
-        let mut parser = RawParser::new(Box::new(s.bytes()));
+        let mut parser = RawTokenizer::new(Box::new(s.bytes()));
         assert_eq!(
             parser.next(),
             Some(RawToken::InlineText(
@@ -322,7 +319,7 @@ mod tests {
     #[test]
     fn test_2() {
         let s = "abc {icon}{em; hi! }\n{em ; Hi!\\s} ";
-        let mut parser = RawParser::new(Box::new(s.bytes()));
+        let mut parser = RawTokenizer::new(Box::new(s.bytes()));
         assert_eq!(
             parser.next(),
             Some(RawToken::InlineText(
