@@ -53,7 +53,7 @@ impl Position {
         Position {
             byte: 0,
             line: 1,
-            col: 1,
+            col: 0,
         }
     }
     pub fn new2(byte: usize, line: usize, col: usize) -> Self {
@@ -69,7 +69,7 @@ impl Position {
         self.col += 1;
         if c == '\n' || c == '\u{0085}' || c == '\u{2028}' || c == '\u{2029}' {
             self.line += 1;
-            self.col = 1;
+            self.col = 0;
         }
     }
 
