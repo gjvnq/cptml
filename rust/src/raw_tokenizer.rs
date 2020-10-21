@@ -3,6 +3,8 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
+
+use crate::pos::Position;
 use crate::hacks::is_valid_id_first_char;
 use crate::hacks::is_valid_id_next_char;
 use crate::hacks::ByteReader;
@@ -11,7 +13,7 @@ use crate::pos::Span;
 use core::fmt::Debug;
 use std::mem;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RawName {
     pub view: String,
     pub special: bool,
@@ -20,9 +22,43 @@ pub struct RawName {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DualString {
+    raw: String,
+    parsed: String
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Number {
+    Integer(i64),
+    Float(f64),
+}
+
+impl Eq for Number {
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Token {
+    // (span, raw, parsed)
+    CodeBlock(Span, String, String),
+    Whitespace(Span, String, String),
+    TextMarker(Span, char),
+    InlineText(Span, String, String),
+    InlineMathText(Span, String, String),
+    DisplayMathText(Span, String, String),
+    AttributeName(Span, String, RawName),
+    NumericValue(Span, String, Number),
+    StringValue(Span, String, String),
+    CurlyTagStart(Span, String, RawName),
+    CurlyTagEnd(Span),
+    PointyTagStart(Span, String, RawName),
+    PointyTagEnd(Span, char),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 // The idea is that simply printing an array of RawToken you get the exact same thing as the input
 pub enum RawToken {
     CodeBlock(Span, String),
+    Whitespace(Span, String),
     TextMarker(Span, char),
     InlineText(Span, String),
     InlineMathText(Span, String),
@@ -39,9 +75,10 @@ pub enum RawToken {
 type GotFirstLetter = bool;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum State {
+enum Mode {
     CodeBlock,
     TextMarker,
+    Whitespace,
     InlineText(TextEscapeState),
     InlineMathText,
     DisplayMathText,
@@ -55,6 +92,14 @@ enum State {
     PointyTagEnd,
 }
 
+#[derive(Debug)]
+struct State {
+    mode: Mode,
+    after_whitespace: Option<Mode>,
+    text_escape: Option<TextEscapeState>,
+    inside_tag: TagType,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TagType {
     NotTag,
@@ -64,9 +109,65 @@ enum TagType {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TextEscapeState {
-    None,
+    Normal,
     Slash,
     Unicode,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TokenizerError {
+    IllegalChar(Position, char),
+    IllegalEscapeSequence(Position, String)
+}
+
+fn next_state(src: &mut PeekReader, state: &mut State) -> Option<TokenizerError> {
+    let (last_c, pop_c, next_c) = (src.peek(-1), src.peek(0), src.peek(1));
+    unimplemented!()
+}
+
+fn parse_whitespace(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
+    let (last_c, pop_c, next_c) = (src.peek(-1), src.peek(0), src.peek(1));
+    unimplemented!()
+}
+
+fn parse_inline_text(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
+    let (last_c, pop_c, next_c) = (src.peek(-1), src.peek(0), src.peek(1));
+    unimplemented!()
+}
+
+fn parse_tag_start(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
+    let (last_c, pop_c, next_c) = (src.peek(-1), src.peek(0), src.peek(1));
+    unimplemented!()
+}
+
+fn parse_attr_name(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
+    let (last_c, pop_c, next_c) = (src.peek(-1), src.peek(0), src.peek(1));
+    unimplemented!()
+}
+
+fn parse_string_value(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
+    let (last_c, pop_c, next_c) = (src.peek(-1), src.peek(0), src.peek(1));
+    unimplemented!()
+}
+
+fn parse_numeric_value(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
+    let (last_c, pop_c, next_c) = (src.peek(-1), src.peek(0), src.peek(1));
+    unimplemented!()
+}
+
+fn parse_tag_end(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
+    let (last_c, pop_c, next_c) = (src.peek(-1), src.peek(0), src.peek(1));
+    unimplemented!()
+}
+
+// the other functions don't actually calculate the span, they just return a dummy value for it
+fn parse_next_token(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
+    let (last_c, pop_c, next_c) = (src.peek(-1), src.peek(0), src.peek(1));
+    let mut span = Span::new();
+    span.start = src.get_pos();
+    // do stuff
+    span.end = src.get_pos();    
+    unimplemented!()
 }
 
 #[derive(Debug)]
@@ -75,7 +176,7 @@ pub struct RawTokenizer {
     txt: String,
     tmp: String,
     span: Span,
-    state: State,
+    state: Mode,
     result: Option<RawToken>,
     done: bool,
     repeat_c: bool,
@@ -89,7 +190,7 @@ impl RawTokenizer {
             src: Box::new(PeekReader::new(reader)),
             txt: "".to_string(),
             tmp: "".to_string(),
-            state: State::InlineText(TextEscapeState::None),
+            state: Mode::InlineText(TextEscapeState::Normal),
             span: Span::new(),
             result: None,
             done: false,
@@ -116,30 +217,30 @@ impl RawTokenizer {
             if c == '\0' {
                 self.done = true;
                 match &self.state {
-                    State::InlineText(substate) => self.result_text(*substate),
-                    State::CurlyTagStart => self.result_curly_start(),
-                    State::CurlyTagEnd => self.result_curly_end(),
-                    State::PointyTagStart => self.result_pointy_start(),
-                    State::PointyTagEnd => self.result_pointy_end(),
-                    State::StringValue => self.result_string_value(),
-                    State::NumericValue => self.result_numeric_value(),
-                    State::TextMarker => self.result_text_marker(c),
-                    State::AttributeName(_) => self.result_attribute_name(),
+                    Mode::InlineText(substate) => self.result_text(*substate),
+                    Mode::CurlyTagStart => self.result_curly_start(),
+                    Mode::CurlyTagEnd => self.result_curly_end(),
+                    Mode::PointyTagStart => self.result_pointy_start(),
+                    Mode::PointyTagEnd => self.result_pointy_end(),
+                    Mode::StringValue => self.result_string_value(),
+                    Mode::NumericValue => self.result_numeric_value(),
+                    Mode::TextMarker => self.result_text_marker(c),
+                    Mode::AttributeName(_) => self.result_attribute_name(),
                     _ => panic!("unexpected state: {:?}", self.state),
                 }
                 return;
             }
             // Process new char
             match &self.state {
-                State::InlineText(substate) => self.mode_text(c, *substate),
-                State::CurlyTagStart => self.mode_curly_start(c),
-                State::CurlyTagEnd => self.mode_curly_end(c),
-                State::PointyTagStart => self.mode_pointy_start(c),
-                State::PointyTagEnd => self.mode_pointy_end(c),
-                State::StringValue => self.mode_string_value(c),
-                State::NumericValue => self.mode_numeric_value(c),
-                State::TextMarker => self.result_text_marker(c),
-                State::AttributeName(got_first_letter) => {
+                Mode::InlineText(substate) => self.mode_text(c, *substate),
+                Mode::CurlyTagStart => self.mode_curly_start(c),
+                Mode::CurlyTagEnd => self.mode_curly_end(c),
+                Mode::PointyTagStart => self.mode_pointy_start(c),
+                Mode::PointyTagEnd => self.mode_pointy_end(c),
+                Mode::StringValue => self.mode_string_value(c),
+                Mode::NumericValue => self.mode_numeric_value(c),
+                Mode::TextMarker => self.result_text_marker(c),
+                Mode::AttributeName(got_first_letter) => {
                     self.mode_attribute_name(c, *got_first_letter)
                 }
                 _ => panic!("unexpected state: {:?}", self.state),
@@ -151,26 +252,26 @@ impl RawTokenizer {
         let next_c = self.src.peek(dist);
         println!("peek_next_state_attr({}) {:?}", dist, next_c);
         if next_c == '}' && self.inside_tag == TagType::CurlyTag {
-            self.state = State::CurlyTagEnd;
+            self.state = Mode::CurlyTagEnd;
         } else if next_c == '>' && self.inside_tag == TagType::PointyTag {
-            self.state = State::PointyTagEnd;
+            self.state = Mode::PointyTagEnd;
         } else if next_c == ';' && self.inside_tag == TagType::CurlyTag {
-            self.state = State::TextMarker;
+            self.state = Mode::TextMarker;
         } else if next_c == '|' && self.inside_tag == TagType::PointyTag {
-            self.state = State::TextMarker;
+            self.state = Mode::TextMarker;
         } else if next_c == '}' || next_c == '>' || next_c == ';' || next_c == '|' {
             let mut pos = self.src.get_pos().clone();
             pos.step(next_c);
             panic!("unexpected character {:?} at {:?}", next_c, pos)
         } else {
-            self.state = State::AttributeName(false);
+            self.state = Mode::AttributeName(false);
         }
     }
 
     fn result_text_marker(&mut self, c: char) {
         self.span.step(c);
         self.result = Some(RawToken::TextMarker(self.span, c));
-        self.state = State::InlineText(TextEscapeState::None);
+        self.state = Mode::InlineText(TextEscapeState::Normal);
     }
 
     fn result_numeric_value(&mut self) {
@@ -182,7 +283,7 @@ impl RawTokenizer {
             self.txt.push(c);
             self.span.step(c);
         } else if c.is_whitespace() {
-            self.state = State::AttributeName(false);
+            self.state = Mode::AttributeName(false);
             self.repeat_c = true;
             self.result_numeric_value();
         } else {
@@ -223,7 +324,7 @@ impl RawTokenizer {
         if !got_first_letter {
             if id_char {
                 got_first_letter = true;
-                self.state = State::AttributeName(got_first_letter);
+                self.state = Mode::AttributeName(got_first_letter);
             } else if !c.is_whitespace() {
                 // attribute names can't begin with digits
                 panic!("unexpected character {:?} at {:?}", c, self.span.end);
@@ -238,26 +339,26 @@ impl RawTokenizer {
             self.result_attribute_name();
             let next_c = self.src.peek(1);
             if next_c == '\"' {
-                self.state = State::StringValue;
+                self.state = Mode::StringValue;
             } else if next_c == 'f' || next_c == 't' {
-                self.state = State::BooleanValue;
+                self.state = Mode::BooleanValue;
             } else if next_c.is_ascii_digit() || next_c == '.' {
-                self.state = State::NumericValue;
+                self.state = Mode::NumericValue;
             } else if c.is_whitespace() {
-                self.state = State::AttributeName(false);
+                self.state = Mode::AttributeName(false);
             } else {
                 panic!("unexpected character {:?} at {:?}", c, self.src.get_pos());
             }
         } else if c == ';' {
-            self.state = State::InlineText(TextEscapeState::None);
+            self.state = Mode::InlineText(TextEscapeState::Normal);
             self.repeat_c = false;
             self.result_attribute_name();
         } else if c == '}' && self.inside_tag == TagType::CurlyTag {
-            self.state = State::CurlyTagEnd;
+            self.state = Mode::CurlyTagEnd;
             self.repeat_c = true;
             self.result_attribute_name();
         } else if c == '>' && self.inside_tag == TagType::PointyTag {
-            self.state = State::PointyTagEnd;
+            self.state = Mode::PointyTagEnd;
             self.repeat_c = true;
             self.result_attribute_name();
         } else if !id_char && !c.is_whitespace() {
@@ -279,7 +380,7 @@ impl RawTokenizer {
 
     fn mode_curly_end(&mut self, c: char) {
         self.span.step(c);
-        self.state = State::InlineText(TextEscapeState::None);
+        self.state = Mode::InlineText(TextEscapeState::Normal);
         self.result_curly_end();
         self.inside_tag = TagType::NotTag;
     }
@@ -294,7 +395,7 @@ impl RawTokenizer {
         if last_c.is_whitespace() && c.is_alphabetic() && self.txt.len() > 0 {
             println!("{:?} {:?} {:?}", self.txt, last_c, c);
             self.result_curly_start();
-            self.state = State::AttributeName(true);
+            self.state = Mode::AttributeName(true);
             self.repeat_c = true;
             return;
         }
@@ -305,8 +406,8 @@ impl RawTokenizer {
 
         if c == '}' || c == ';' {
             match c {
-                '}' => self.state = State::CurlyTagEnd,
-                ';' => self.state = State::InlineText(TextEscapeState::None),
+                '}' => self.state = Mode::CurlyTagEnd,
+                ';' => self.state = Mode::InlineText(TextEscapeState::Normal),
                 _ => {}
             }
             self.result_curly_start();
@@ -330,34 +431,34 @@ impl RawTokenizer {
         let next_c = self.src.peek(1);
         let between_spaces = (next_c == ' ' || next_c == '\0') && last_c == ' ';
         if (c == '{' || c == '}' || c == '<' || c == '|')
-            && escape == TextEscapeState::None
+            && escape == TextEscapeState::Normal
             && !between_spaces
         {
             self.result_text(escape);
             match c {
-                '{' => self.state = State::CurlyTagStart,
-                '}' => self.state = State::CurlyTagEnd,
-                '<' => self.state = State::PointyTagStart,
-                '|' => self.state = State::PointyTagEnd,
+                '{' => self.state = Mode::CurlyTagStart,
+                '}' => self.state = Mode::CurlyTagEnd,
+                '<' => self.state = Mode::PointyTagStart,
+                '|' => self.state = Mode::PointyTagEnd,
                 _ => {}
             }
             self.repeat_c = true;
         } else {
             self.txt.push(c);
             self.span.step(c);
-            if c == '\\' && escape == TextEscapeState::None {
+            if c == '\\' && escape == TextEscapeState::Normal {
                 escape = TextEscapeState::Slash;
             } else if escape == TextEscapeState::Slash {
                 if c == 'u' {
                     escape = TextEscapeState::Unicode;
                 } else {
-                    escape = TextEscapeState::None;
+                    escape = TextEscapeState::Normal;
                 }
             } else if escape == TextEscapeState::Slash && c == ';' {
-                escape = TextEscapeState::None;
+                escape = TextEscapeState::Normal;
             }
 
-            self.state = State::InlineText(escape);
+            self.state = Mode::InlineText(escape);
         }
     }
 }
