@@ -20,15 +20,15 @@ pub struct RawName {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+// The idea is that simply printing an array of RawToken you get the exact same thing as the input
 pub enum RawToken {
     CodeBlock(Span, String),
+    TextMarker(Span, char),
     InlineText(Span, String),
     InlineMathText(Span, String),
     DisplayMathText(Span, String),
     AttributeName(Span, String),
-    BooleanValue(Span, bool),
-    IntegerValue(Span, i64),
-    FloatValue(Span, i64, i64),
+    NumericValue(Span, String),
     StringValue(Span, String),
     CurlyTagStart(Span, String),
     CurlyTagEnd(Span),
@@ -41,10 +41,11 @@ type GotFirstLetter = bool;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum State {
     CodeBlock,
+    TextMarker,
     InlineText(TextEscapeState),
     InlineMathText,
     DisplayMathText,
-    AttributeName(GotFirstLetter), // TODO: add another substate for curly vs pointy
+    AttributeName(GotFirstLetter),
     BooleanValue,
     NumericValue,
     StringValue,
@@ -52,6 +53,13 @@ enum State {
     CurlyTagEnd,
     PointyTagStart,
     PointyTagEnd,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TagType {
+    NotTag,
+    CurlyTag,
+    PointyTag,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,8 +79,10 @@ pub struct RawTokenizer {
     result: Option<RawToken>,
     done: bool,
     repeat_c: bool,
+    inside_tag: TagType,
 }
 
+// TODO: untangle this mess!
 impl RawTokenizer {
     pub fn new(reader: Box<dyn ByteReader>) -> Self {
         RawTokenizer {
@@ -84,6 +94,7 @@ impl RawTokenizer {
             result: None,
             done: false,
             repeat_c: false,
+            inside_tag: TagType::NotTag,
         }
     }
 
@@ -110,6 +121,9 @@ impl RawTokenizer {
                     State::CurlyTagEnd => self.result_curly_end(),
                     State::PointyTagStart => self.result_pointy_start(),
                     State::PointyTagEnd => self.result_pointy_end(),
+                    State::StringValue => self.result_string_value(),
+                    State::NumericValue => self.result_numeric_value(),
+                    State::TextMarker => self.result_text_marker(c),
                     State::AttributeName(_) => self.result_attribute_name(),
                     _ => panic!("unexpected state: {:?}", self.state),
                 }
@@ -122,9 +136,76 @@ impl RawTokenizer {
                 State::CurlyTagEnd => self.mode_curly_end(c),
                 State::PointyTagStart => self.mode_pointy_start(c),
                 State::PointyTagEnd => self.mode_pointy_end(c),
-                State::AttributeName(substate) => self.mode_attribute_name(c, *substate),
+                State::StringValue => self.mode_string_value(c),
+                State::NumericValue => self.mode_numeric_value(c),
+                State::TextMarker => self.result_text_marker(c),
+                State::AttributeName(got_first_letter) => {
+                    self.mode_attribute_name(c, *got_first_letter)
+                }
                 _ => panic!("unexpected state: {:?}", self.state),
             }
+        }
+    }
+
+    fn peek_next_state_attr(&mut self, dist: isize) {
+        let next_c = self.src.peek(dist);
+        println!("peek_next_state_attr({}) {:?}", dist, next_c);
+        if next_c == '}' && self.inside_tag == TagType::CurlyTag {
+            self.state = State::CurlyTagEnd;
+        } else if next_c == '>' && self.inside_tag == TagType::PointyTag {
+            self.state = State::PointyTagEnd;
+        } else if next_c == ';' && self.inside_tag == TagType::CurlyTag {
+            self.state = State::TextMarker;
+        } else if next_c == '|' && self.inside_tag == TagType::PointyTag {
+            self.state = State::TextMarker;
+        } else if next_c == '}' || next_c == '>' || next_c == ';' || next_c == '|' {
+            let mut pos = self.src.get_pos().clone();
+            pos.step(next_c);
+            panic!("unexpected character {:?} at {:?}", next_c, pos)
+        } else {
+            self.state = State::AttributeName(false);
+        }
+    }
+
+    fn result_text_marker(&mut self, c: char) {
+        self.span.step(c);
+        self.result = Some(RawToken::TextMarker(self.span, c));
+        self.state = State::InlineText(TextEscapeState::None);
+    }
+
+    fn result_numeric_value(&mut self) {
+        self.result = Some(RawToken::NumericValue(self.span, self.txt.clone()));
+    }
+
+    fn mode_numeric_value(&mut self, c: char) {
+        if c.is_ascii_digit() || c == '.' || c == '_' {
+            self.txt.push(c);
+            self.span.step(c);
+        } else if c.is_whitespace() {
+            self.state = State::AttributeName(false);
+            self.repeat_c = true;
+            self.result_numeric_value();
+        } else {
+            self.peek_next_state_attr(0);
+            self.repeat_c = true;
+            self.result_numeric_value();
+        }
+    }
+
+    fn result_string_value(&mut self) {
+        self.result = Some(RawToken::StringValue(self.span, self.txt.clone()));
+    }
+
+    fn mode_string_value(&mut self, c: char) {
+        let last_c = self.src.peek(-1);
+        self.txt.push(c);
+        self.span.step(c);
+        println!("mode_string_value: `{}`", self.txt);
+
+        if c == '\"' && last_c != '\\' && self.txt.len() > 1 {
+            println!("{:?} ({:?}) {:?}", last_c, c, self.src.peek(1));
+            self.result_string_value();
+            self.peek_next_state_attr(1);
         }
     }
 
@@ -132,12 +213,12 @@ impl RawTokenizer {
         self.result = Some(RawToken::AttributeName(self.span, self.txt.clone()));
     }
 
-    fn mode_attribute_name(&mut self, c: char, substate: bool) {
-        let mut got_first_letter = substate;
+    fn mode_attribute_name(&mut self, c: char, first: bool) {
+        let mut got_first_letter = first;
 
         let id_char = match got_first_letter {
             false => is_valid_id_first_char(c),
-            true => is_valid_id_next_char(c)
+            true => is_valid_id_next_char(c),
         };
         if !got_first_letter {
             if id_char {
@@ -167,19 +248,19 @@ impl RawTokenizer {
             } else {
                 panic!("unexpected character {:?} at {:?}", c, self.src.get_pos());
             }
-        } else if c == ';' || c == '}' || c == '>' {
-            self.state = match c {
-                ';' => State::InlineText(TextEscapeState::None),
-                '}' => State::CurlyTagEnd,
-                '>' => State::PointyTagEnd,
-                _ => unreachable!(),
-            };
-            self.repeat_c = match c {
-                ';' => false,
-                _ => true
-            };
+        } else if c == ';' {
+            self.state = State::InlineText(TextEscapeState::None);
+            self.repeat_c = false;
             self.result_attribute_name();
-        } else if !id_char {
+        } else if c == '}' && self.inside_tag == TagType::CurlyTag {
+            self.state = State::CurlyTagEnd;
+            self.repeat_c = true;
+            self.result_attribute_name();
+        } else if c == '>' && self.inside_tag == TagType::PointyTag {
+            self.state = State::PointyTagEnd;
+            self.repeat_c = true;
+            self.result_attribute_name();
+        } else if !id_char && !c.is_whitespace() {
             panic!("unexpected character {:?} at {:?}", c, self.span.end);
         }
     }
@@ -200,10 +281,12 @@ impl RawTokenizer {
         self.span.step(c);
         self.state = State::InlineText(TextEscapeState::None);
         self.result_curly_end();
+        self.inside_tag = TagType::NotTag;
     }
 
     fn result_curly_start(&mut self) {
         self.result = Some(RawToken::CurlyTagStart(self.span, self.txt.clone()));
+        self.inside_tag = TagType::CurlyTag;
     }
 
     fn mode_curly_start(&mut self, c: char) {
@@ -442,7 +525,7 @@ mod tests {
 
     #[test]
     fn test_3() {
-        let s = "abc {icon bool_attr id=\"abc\" num=1 val=.5; text}{end id=\"e\"}";
+        let s = "abc {icon bool_attr id=\"ab\\\"c\" num=1 val=.5; text   }{end id=\"e\"}";
         let mut parser = RawTokenizer::new(Box::new(s.bytes()));
         assert_eq!(
             parser.next(),
@@ -474,56 +557,80 @@ mod tests {
         );
         assert_eq!(
             parser.next(),
-            Some(RawToken::CurlyTagEnd(Span::new2(10, 1, 10, 11, 1, 11)))
+            Some(RawToken::StringValue(
+                Span::new2(23, 1, 23, 30, 1, 30),
+                "\"ab\\\"c\"".to_string()
+            ))
+        );
+        assert_eq!(
+            parser.next(),
+            Some(RawToken::AttributeName(
+                Span::new2(30, 1, 30, 35, 1, 35),
+                " num=".to_string()
+            ))
+        );
+        assert_eq!(
+            parser.next(),
+            Some(RawToken::NumericValue(
+                Span::new2(35, 1, 35, 36, 1, 36),
+                "1".to_string()
+            ))
+        );
+        assert_eq!(
+            parser.next(),
+            Some(RawToken::AttributeName(
+                Span::new2(37, 1, 37, 42, 1, 42),
+                " val=".to_string()
+            ))
+        );
+        assert_eq!(
+            parser.next(),
+            Some(RawToken::NumericValue(
+                Span::new2(41, 1, 41, 43, 1, 43),
+                ".5".to_string()
+            ))
+        );
+        assert_eq!(
+            parser.next(),
+            Some(RawToken::TextMarker(Span::new2(44, 1, 44, 45, 1, 45), ';'))
+        );
+        assert_eq!(
+            parser.next(),
+            Some(RawToken::InlineText(
+                Span::new2(44, 1, 44, 52, 1, 52),
+                " text   ".to_string()
+            ))
+        );
+        assert_eq!(
+            parser.next(),
+            Some(RawToken::CurlyTagEnd(Span::new2(53, 1, 53, 54, 1, 54)))
         );
         assert_eq!(
             parser.next(),
             Some(RawToken::CurlyTagStart(
-                Span::new2(10, 1, 10, 14, 1, 14),
-                "{em;".to_string()
+                Span::new2(53, 1, 53, 58, 1, 58),
+                "{end ".to_string()
+            ))
+        );
+        // println!("{:?}", parser);
+        assert_eq!(
+            parser.next(),
+            Some(RawToken::AttributeName(
+                Span::new2(59, 1, 59, 62, 1, 62),
+                "id=".to_string()
             ))
         );
         assert_eq!(
             parser.next(),
-            Some(RawToken::InlineText(
-                Span::new2(14, 1, 14, 19, 1, 19),
-                " hi! ".to_string()
+            Some(RawToken::StringValue(
+                Span::new2(61, 1, 61, 64, 1, 64),
+                "\"e\"".to_string()
             ))
         );
         assert_eq!(
             parser.next(),
-            Some(RawToken::CurlyTagEnd(Span::new2(20, 1, 20, 21, 1, 21)))
-        );
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::InlineText(
-                Span::new2(20, 1, 20, 21, 2, 0),
-                "\n".to_string()
-            ))
-        );
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::CurlyTagStart(
-                Span::new2(22, 2, 1, 27, 2, 6),
-                "{em ;".to_string()
-            ))
-        );
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::InlineText(
-                Span::new2(26, 2, 5, 32, 2, 11),
-                " Hi!\\s".to_string()
-            ))
-        );
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::CurlyTagEnd(Span::new2(33, 2, 12, 34, 2, 13)))
-        );
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::InlineText(
-                Span::new2(33, 2, 12, 34, 2, 13),
-                " ".to_string()
+            Some(RawToken::CurlyTagEnd(
+                Span::new2(64, 1, 64, 65, 1, 65)
             ))
         );
         assert_eq!(parser.next(), None);
