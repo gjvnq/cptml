@@ -145,7 +145,7 @@ fn parse_inline_text(src: &mut PeekReader, state: &mut State) -> Result<Token, T
     let mut ans_raw = String::new();
     let mut ans_parsed = String::new();
     let mut buf_unicode = String::new();
-    let mut ws = WhitesapeMode::NewLine;
+    let mut ws = WhitesapeMode::GotFirst;
     let mut last_vis = 0;
 
     loop {
@@ -267,10 +267,6 @@ fn parse_inline_text(src: &mut PeekReader, state: &mut State) -> Result<Token, T
         } else {
             unreachable!()
         }
-    }
-    // Process whitespace relevance (remove trailing irrelevant space)
-    if ws == WhitesapeMode::GotFirst {
-        ans_parsed = ans_parsed[..last_vis].to_string();
     }
 
     return Ok(Token::InlineText(Span::new(), ans_raw, ans_parsed));

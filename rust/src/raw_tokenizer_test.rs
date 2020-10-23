@@ -106,7 +106,7 @@ fn parse_inline_text_3() {
 
 #[test]
 fn parse_inline_text_4() {
-    let mut input = quick_input("\n   \\n\\u1F4DA;\\t");
+    let mut input = quick_input("\n   \\t   \\n\\u1F4DA;\\t");
     let mut state = State {
         mode: Mode::StartOfInput,
         after_whitespace: None,
@@ -118,8 +118,8 @@ fn parse_inline_text_4() {
         ans,
         Ok(Token::InlineText(
             Span::new(),
-            "\n   \\n\\u1F4DA;\\t".to_string(),
-            "\n   \n📚\t".to_string()
+            "\n   \\t   \\n\\u1F4DA;\\t".to_string(),
+            "\n\t   \n📚\t".to_string()
         ))
     );
 }
