@@ -5,7 +5,7 @@ fn quick_input(input: &'static str) -> PeekReader {
 }
 
 #[test]
-fn parse_inline_text_1() {
+fn parse_inline_text_1a() {
     let mut input = quick_input("");
     let mut state = State {
         mode: Mode::StartOfInput,
@@ -25,7 +25,27 @@ fn parse_inline_text_1() {
 }
 
 #[test]
-fn parse_inline_text_2() {
+fn parse_inline_text_1b() {
+    let mut input = quick_input("     \n");
+    let mut state = State {
+        mode: Mode::StartOfInput,
+        after_whitespace: None,
+        text_escape: TextEscapeState::Normal,
+        inside_tag: TagType::NotTag,
+    };
+    let ans = parse_inline_text(&mut input, &mut state);
+    assert_eq!(
+        ans,
+        Ok(Token::InlineText(
+            Span::new(),
+            "     \n".to_string(),
+            "\n".to_string()
+        ))
+    );
+}
+
+#[test]
+fn parse_inline_text_2a() {
     let mut input = quick_input(" a bc  ");
     let mut state = State {
         mode: Mode::StartOfInput,
@@ -39,14 +59,34 @@ fn parse_inline_text_2() {
         Ok(Token::InlineText(
             Span::new(),
             " a bc  ".to_string(),
-            "a bc".to_string()
+            " a bc  ".to_string()
+        ))
+    );
+}
+
+#[test]
+fn parse_inline_text_2b() {
+    let mut input = quick_input("\n a bc  \n");
+    let mut state = State {
+        mode: Mode::StartOfInput,
+        after_whitespace: None,
+        text_escape: TextEscapeState::Normal,
+        inside_tag: TagType::NotTag,
+    };
+    let ans = parse_inline_text(&mut input, &mut state);
+    assert_eq!(
+        ans,
+        Ok(Token::InlineText(
+            Span::new(),
+            "\n a bc  \n".to_string(),
+            "\na bc\n".to_string()
         ))
     );
 }
 
 #[test]
 fn parse_inline_text_3() {
-    let mut input = quick_input(" \ta bc  \n\t z ");
+    let mut input = quick_input("\n \ta bc  \n\t z ");
     let mut state = State {
         mode: Mode::StartOfInput,
         after_whitespace: None,
@@ -58,15 +98,15 @@ fn parse_inline_text_3() {
         ans,
         Ok(Token::InlineText(
             Span::new(),
-            " \ta bc  \n\t z ".to_string(),
-            "a bc\nz".to_string()
+            "\n \ta bc  \n\t z ".to_string(),
+            "\na bc\nz ".to_string()
         ))
     );
 }
 
 #[test]
 fn parse_inline_text_4() {
-    let mut input = quick_input(" \ta bc  \\n\n\\s\t z\\u1F4DA;   \\u0A;");
+    let mut input = quick_input("\n   \\n\\u1F4DA;\\t");
     let mut state = State {
         mode: Mode::StartOfInput,
         after_whitespace: None,
@@ -78,8 +118,8 @@ fn parse_inline_text_4() {
         ans,
         Ok(Token::InlineText(
             Span::new(),
-            " \ta bc  \\n\n\\s\t z\\u1F4DA;   \\u0A;".to_string(),
-            "a bc  \n\n \t z📚   \n".to_string()
+            "\n   \\n\\u1F4DA;\\t".to_string(),
+            "\n   \n📚\t".to_string()
         ))
     );
 }

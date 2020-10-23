@@ -82,6 +82,13 @@ $$ \frac{-b\pm\sqrt{b^2-4ac}}{2a} $$
   * `\|`: Vertical pipe
   * <code>\`</code>: Back tick
 
+## White space relevance
+
+  * Whitespace = blank space (0x20) and tab (0x09) not including escaped versions of them (ex: `\s` and `\t`).
+  * Whitespace is ignored:
+    * From the begining of a line until first non-whitespace char.
+    * From the last non-whitespace char until the end of the line.
+
 ## Special Elements
 
 ### `!cptml`
