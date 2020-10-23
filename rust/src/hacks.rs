@@ -12,6 +12,19 @@ pub fn is_valid_id_next_char(c: char) -> bool {
     c == '_' || c.is_alphanumeric()
 }
 
+pub fn u32_to_char(val: u32) -> Option<char> {
+    if val > 0x10ffff {
+        // panic!("invalid Unicode scalar (too large): {:?}", ans);
+        return None;
+    }
+    if 0xD800 <= val && val <= 0xDFFF {
+        // panic!("invalid Unicode scalar (surrogate in UTF-8): {:?}", ans);
+        return None;
+    }
+
+    unsafe { Some(std::mem::transmute(val)) }
+}
+
 pub fn bytes_to_char(v: &[u8]) -> (char, usize) {
     let mut ans: u32;
     let size: usize;

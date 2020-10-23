@@ -77,6 +77,9 @@ $$ \frac{-b\pm\sqrt{b^2-4ac}}{2a} $$
   * `\"`: Double quote
   * `\{`: Begin curly brace
   * `\}`: End curly brace
+  * `<`: Less than
+  * `>`: Greate than
+  * `\|`: Vertical pipe
   * <code>\`</code>: Back tick
 
 ## Special Elements

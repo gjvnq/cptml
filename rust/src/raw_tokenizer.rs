@@ -4,11 +4,12 @@
 #![allow(unused_variables)]
 
 
-use crate::pos::Position;
 use crate::hacks::is_valid_id_first_char;
 use crate::hacks::is_valid_id_next_char;
+use crate::hacks::u32_to_char;
 use crate::hacks::ByteReader;
 use crate::peek_reader::PeekReader;
+use crate::pos::Position;
 use crate::pos::Span;
 use core::fmt::Debug;
 use std::mem;
@@ -24,7 +25,7 @@ pub struct RawName {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DualString {
     raw: String,
-    parsed: String
+    parsed: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -33,9 +34,9 @@ pub enum Number {
     Float(f64),
 }
 
-impl Eq for Number {
-}
+impl Eq for Number {}
 
+// Self Note: when making a tree structure, the original "form" will always be printed if possible (use dirty bit?)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Token {
     // (span, raw, parsed)
@@ -76,9 +77,11 @@ type GotFirstLetter = bool;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
+    StartOfInput,
     CodeBlock,
     TextMarker,
     Whitespace,
+    InlineTextNew,
     InlineText(TextEscapeState),
     InlineMathText,
     DisplayMathText,
@@ -96,7 +99,7 @@ enum Mode {
 struct State {
     mode: Mode,
     after_whitespace: Option<Mode>,
-    text_escape: Option<TextEscapeState>,
+    text_escape: TextEscapeState,
     inside_tag: TagType,
 }
 
@@ -114,10 +117,16 @@ enum TextEscapeState {
     Unicode,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WhitesapeMode {
+    NewLine,
+    GotFirst,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenizerError {
     IllegalChar(Position, char),
-    IllegalEscapeSequence(Position, String)
+    IllegalEscapeSequence(Position, String),
 }
 
 fn next_state(src: &mut PeekReader, state: &mut State) -> Option<TokenizerError> {
@@ -131,8 +140,140 @@ fn parse_whitespace(src: &mut PeekReader, state: &mut State) -> Result<Token, To
 }
 
 fn parse_inline_text(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
-    let (last_c, pop_c, next_c) = (src.peek(-1), src.peek(0), src.peek(1));
-    unimplemented!()
+    state.mode = Mode::InlineTextNew;
+    state.text_escape = TextEscapeState::Normal;
+    let mut ans_raw = String::new();
+    let mut ans_parsed = String::new();
+    let mut buf_unicode = String::new();
+    let mut ws = WhitesapeMode::NewLine;
+    let mut last_vis = 0;
+
+    loop {
+        let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
+        // println!("- {:?} {:?}", ans_raw, pop_c);
+        // println!("+ {:?} {:?}", ans_parsed, pop_c);
+        if pop_c == '\0' {
+            break;
+        }
+        if state.text_escape == TextEscapeState::Normal {
+            // Check if we need to change state
+            let pop_special =
+                pop_c == '{' || pop_c == '}' || pop_c == '<' || pop_c == '>' || pop_c == '|';
+            if pop_special && last_c != ' ' && next_c != ' ' {
+                break;
+            }
+            ans_raw.push(pop_c);
+
+            // Process escape sequences
+            if pop_c == '\\' {
+                state.text_escape = match next_c {
+                    'u' => TextEscapeState::Unicode,
+                    _ => TextEscapeState::Slash,
+                };
+                buf_unicode.clear();
+                src.pop();
+                continue;
+            }
+
+            // Process whitespace relevance
+            let c_ws = pop_c == ' ' || pop_c == '\t';
+            if ws == WhitesapeMode::NewLine && !c_ws {
+                ws = WhitesapeMode::GotFirst;
+            }
+            if pop_c == '\n' {
+                // At the end of the line, trim the strign to tha last "visible" char
+                ans_parsed = ans_parsed[..last_vis].to_string();
+                ws = WhitesapeMode::NewLine;
+                ans_parsed.push(pop_c);
+            }
+            if ws == WhitesapeMode::GotFirst {
+                ans_parsed.push(pop_c);
+                if !c_ws {
+                    last_vis = ans_parsed.len();
+                }
+            }
+
+            // Confirm step
+            src.pop();
+        } else if state.text_escape == TextEscapeState::Slash {
+            ans_raw.push(pop_c);
+            let real_c = match pop_c {
+                '"' => '"',
+                '<' => '<',
+                '>' => '>',
+                '\'' => '\'',
+                '\\' => '\\',
+                '`' => '`',
+                'a' => '\x07',
+                'f' => '\x0C',
+                'n' => '\n',
+                'r' => '\r',
+                's' => ' ',
+                't' => '\t',
+                'v' => '\x0B',
+                '{' => '{',
+                '|' => '|',
+                '}' => '}',
+                _ => '\0',
+            };
+            if real_c == '\0' {
+                let s_err = format!("\\{}", next_c);
+                return Err(TokenizerError::IllegalEscapeSequence(src.get_pos(), s_err));
+            } else {
+                ans_parsed.push(real_c);
+                src.pop();
+                state.text_escape = TextEscapeState::Normal;
+
+                ws = WhitesapeMode::GotFirst;
+                last_vis = ans_parsed.len();
+            }
+        } else if state.text_escape == TextEscapeState::Unicode {
+            ans_raw.push(pop_c);
+
+            fn ret_uni_err(
+                src: &PeekReader,
+                buf_unicode: &String,
+            ) -> Result<Token, TokenizerError> {
+                let s_err = "\\u".to_string() + &buf_unicode;
+                return Err(TokenizerError::IllegalEscapeSequence(src.get_pos(), s_err));
+            }
+
+            if buf_unicode.len() == 0 && pop_c == 'u' {
+                // do nothing
+            } else if pop_c == ';' {
+                // finish
+                let hex_val = match u32::from_str_radix(&buf_unicode, 16) {
+                    Ok(x) => x,
+                    _ => return ret_uni_err(src, &buf_unicode),
+                };
+                let real_c = match u32_to_char(hex_val) {
+                    Some(c) => c,
+                    _ => return ret_uni_err(src, &buf_unicode),
+                };
+                ans_parsed.push(real_c);
+                state.text_escape = TextEscapeState::Normal;
+
+                // Process whitespace relevance
+                ws = WhitesapeMode::GotFirst;
+                last_vis = ans_parsed.len();
+            } else if pop_c.is_digit(16) {
+                buf_unicode.push(pop_c);
+            } else {
+                buf_unicode.push(pop_c);
+                src.pop();
+                return ret_uni_err(src, &buf_unicode);
+            }
+            src.pop();
+        } else {
+            unreachable!()
+        }
+    }
+    // Process whitespace relevance (remove trailing irrelevant space)
+    if ws == WhitesapeMode::GotFirst {
+        ans_parsed = ans_parsed[..last_vis].to_string();
+    }
+
+    return Ok(Token::InlineText(Span::new(), ans_raw, ans_parsed));
 }
 
 fn parse_tag_start(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
@@ -166,7 +307,7 @@ fn parse_next_token(src: &mut PeekReader, state: &mut State) -> Result<Token, To
     let mut span = Span::new();
     span.start = src.get_pos();
     // do stuff
-    span.end = src.get_pos();    
+    span.end = src.get_pos();
     unimplemented!()
 }
 
@@ -477,263 +618,267 @@ impl Iterator for RawTokenizer {
 }
 
 #[cfg(test)]
-mod tests {
-    use crate::raw_tokenizer::*;
+#[path = "raw_tokenizer_test.rs"]
+mod tests;
 
-    #[test]
-    fn test_1() {
-        let s = "";
-        let mut parser = RawTokenizer::new(Box::new(s.bytes()));
-        assert_eq!(parser.next(), None);
+// #[cfg(test)]
+// mod tests {
+//     use crate::raw_tokenizer::*;
 
-        let s = "a";
-        let mut parser = RawTokenizer::new(Box::new(s.bytes()));
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::InlineText(
-                Span::new2(0, 1, 0, 1, 1, 1),
-                "a".to_string()
-            ))
-        );
-        assert_eq!(parser.next(), None);
+//     #[test]
+//     fn test_1() {
+//         let s = "";
+//         let mut parser = RawTokenizer::new(Box::new(s.bytes()));
+//         assert_eq!(parser.next(), None);
 
-        let s = "a{";
-        let mut parser = RawTokenizer::new(Box::new(s.bytes()));
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::InlineText(
-                Span::new2(0, 1, 0, 1, 1, 1),
-                "a".to_string()
-            ))
-        );
+//         let s = "a";
+//         let mut parser = RawTokenizer::new(Box::new(s.bytes()));
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::InlineText(
+//                 Span::new2(0, 1, 0, 1, 1, 1),
+//                 "a".to_string()
+//             ))
+//         );
+//         assert_eq!(parser.next(), None);
 
-        let s = "hello world! {";
-        let mut parser = RawTokenizer::new(Box::new(s.bytes()));
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::InlineText(
-                Span::new2(0, 1, 0, 14, 1, 14),
-                "hello world! {".to_string()
-            ))
-        );
+//         let s = "a{";
+//         let mut parser = RawTokenizer::new(Box::new(s.bytes()));
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::InlineText(
+//                 Span::new2(0, 1, 0, 1, 1, 1),
+//                 "a".to_string()
+//             ))
+//         );
 
-        let s = "hello > world!{ ";
-        let mut parser = RawTokenizer::new(Box::new(s.bytes()));
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::InlineText(
-                Span::new2(0, 1, 0, 14, 1, 14),
-                "hello > world!".to_string()
-            ))
-        );
+//         let s = "hello world! {";
+//         let mut parser = RawTokenizer::new(Box::new(s.bytes()));
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::InlineText(
+//                 Span::new2(0, 1, 0, 14, 1, 14),
+//                 "hello world! {".to_string()
+//             ))
+//         );
 
-        let s = "hello } world!{!";
-        let mut parser = RawTokenizer::new(Box::new(s.bytes()));
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::InlineText(
-                Span::new2(0, 1, 0, 14, 1, 14),
-                "hello } world!".to_string()
-            ))
-        );
+//         let s = "hello > world!{ ";
+//         let mut parser = RawTokenizer::new(Box::new(s.bytes()));
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::InlineText(
+//                 Span::new2(0, 1, 0, 14, 1, 14),
+//                 "hello > world!".to_string()
+//             ))
+//         );
 
-        let s = "\\t } \\{\\s ";
-        let mut parser = RawTokenizer::new(Box::new(s.bytes()));
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::InlineText(
-                Span::new2(0, 1, 0, 10, 1, 10),
-                "\\t } \\{\\s ".to_string()
-            ))
-        );
-        assert_eq!(parser.next(), None);
-    }
+//         let s = "hello } world!{!";
+//         let mut parser = RawTokenizer::new(Box::new(s.bytes()));
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::InlineText(
+//                 Span::new2(0, 1, 0, 14, 1, 14),
+//                 "hello } world!".to_string()
+//             ))
+//         );
 
-    #[test]
-    fn test_2() {
-        let s = "abc {icon}{em; hi! }\n{em ; Hi!\\s} ";
-        let mut parser = RawTokenizer::new(Box::new(s.bytes()));
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::InlineText(
-                Span::new2(0, 1, 0, 4, 1, 4),
-                "abc ".to_string()
-            ))
-        );
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::CurlyTagStart(
-                Span::new2(5, 1, 5, 10, 1, 10),
-                "{icon".to_string()
-            ))
-        );
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::CurlyTagEnd(Span::new2(10, 1, 10, 11, 1, 11)))
-        );
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::CurlyTagStart(
-                Span::new2(10, 1, 10, 14, 1, 14),
-                "{em;".to_string()
-            ))
-        );
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::InlineText(
-                Span::new2(14, 1, 14, 19, 1, 19),
-                " hi! ".to_string()
-            ))
-        );
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::CurlyTagEnd(Span::new2(20, 1, 20, 21, 1, 21)))
-        );
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::InlineText(
-                Span::new2(20, 1, 20, 21, 2, 0),
-                "\n".to_string()
-            ))
-        );
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::CurlyTagStart(
-                Span::new2(22, 2, 1, 27, 2, 6),
-                "{em ;".to_string()
-            ))
-        );
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::InlineText(
-                Span::new2(26, 2, 5, 32, 2, 11),
-                " Hi!\\s".to_string()
-            ))
-        );
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::CurlyTagEnd(Span::new2(33, 2, 12, 34, 2, 13)))
-        );
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::InlineText(
-                Span::new2(33, 2, 12, 34, 2, 13),
-                " ".to_string()
-            ))
-        );
-        assert_eq!(parser.next(), None);
-    }
+//         let s = "\\t } \\{\\s ";
+//         let mut parser = RawTokenizer::new(Box::new(s.bytes()));
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::InlineText(
+//                 Span::new2(0, 1, 0, 10, 1, 10),
+//                 "\\t } \\{\\s ".to_string()
+//             ))
+//         );
+//         assert_eq!(parser.next(), None);
+//     }
 
-    #[test]
-    fn test_3() {
-        let s = "abc {icon bool_attr id=\"ab\\\"c\" num=1 val=.5; text   }{end id=\"e\"}";
-        let mut parser = RawTokenizer::new(Box::new(s.bytes()));
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::InlineText(
-                Span::new2(0, 1, 0, 4, 1, 4),
-                "abc ".to_string()
-            ))
-        );
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::CurlyTagStart(
-                Span::new2(5, 1, 5, 11, 1, 11),
-                "{icon ".to_string()
-            ))
-        );
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::AttributeName(
-                Span::new2(11, 1, 11, 20, 1, 20),
-                "bool_attr".to_string()
-            ))
-        );
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::AttributeName(
-                Span::new2(20, 1, 20, 23, 1, 23),
-                "id=".to_string()
-            ))
-        );
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::StringValue(
-                Span::new2(23, 1, 23, 30, 1, 30),
-                "\"ab\\\"c\"".to_string()
-            ))
-        );
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::AttributeName(
-                Span::new2(30, 1, 30, 35, 1, 35),
-                " num=".to_string()
-            ))
-        );
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::NumericValue(
-                Span::new2(35, 1, 35, 36, 1, 36),
-                "1".to_string()
-            ))
-        );
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::AttributeName(
-                Span::new2(37, 1, 37, 42, 1, 42),
-                " val=".to_string()
-            ))
-        );
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::NumericValue(
-                Span::new2(41, 1, 41, 43, 1, 43),
-                ".5".to_string()
-            ))
-        );
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::TextMarker(Span::new2(44, 1, 44, 45, 1, 45), ';'))
-        );
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::InlineText(
-                Span::new2(44, 1, 44, 52, 1, 52),
-                " text   ".to_string()
-            ))
-        );
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::CurlyTagEnd(Span::new2(53, 1, 53, 54, 1, 54)))
-        );
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::CurlyTagStart(
-                Span::new2(53, 1, 53, 58, 1, 58),
-                "{end ".to_string()
-            ))
-        );
-        // println!("{:?}", parser);
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::AttributeName(
-                Span::new2(59, 1, 59, 62, 1, 62),
-                "id=".to_string()
-            ))
-        );
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::StringValue(
-                Span::new2(61, 1, 61, 64, 1, 64),
-                "\"e\"".to_string()
-            ))
-        );
-        assert_eq!(
-            parser.next(),
-            Some(RawToken::CurlyTagEnd(
-                Span::new2(64, 1, 64, 65, 1, 65)
-            ))
-        );
-        assert_eq!(parser.next(), None);
-    }
-}
+//     #[test]
+//     fn test_2() {
+//         let s = "abc {icon}{em; hi! }\n{em ; Hi!\\s} ";
+//         let mut parser = RawTokenizer::new(Box::new(s.bytes()));
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::InlineText(
+//                 Span::new2(0, 1, 0, 4, 1, 4),
+//                 "abc ".to_string()
+//             ))
+//         );
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::CurlyTagStart(
+//                 Span::new2(5, 1, 5, 10, 1, 10),
+//                 "{icon".to_string()
+//             ))
+//         );
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::CurlyTagEnd(Span::new2(10, 1, 10, 11, 1, 11)))
+//         );
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::CurlyTagStart(
+//                 Span::new2(10, 1, 10, 14, 1, 14),
+//                 "{em;".to_string()
+//             ))
+//         );
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::InlineText(
+//                 Span::new2(14, 1, 14, 19, 1, 19),
+//                 " hi! ".to_string()
+//             ))
+//         );
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::CurlyTagEnd(Span::new2(20, 1, 20, 21, 1, 21)))
+//         );
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::InlineText(
+//                 Span::new2(20, 1, 20, 21, 2, 0),
+//                 "\n".to_string()
+//             ))
+//         );
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::CurlyTagStart(
+//                 Span::new2(22, 2, 1, 27, 2, 6),
+//                 "{em ;".to_string()
+//             ))
+//         );
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::InlineText(
+//                 Span::new2(26, 2, 5, 32, 2, 11),
+//                 " Hi!\\s".to_string()
+//             ))
+//         );
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::CurlyTagEnd(Span::new2(33, 2, 12, 34, 2, 13)))
+//         );
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::InlineText(
+//                 Span::new2(33, 2, 12, 34, 2, 13),
+//                 " ".to_string()
+//             ))
+//         );
+//         assert_eq!(parser.next(), None);
+//     }
+
+//     #[test]
+//     fn test_3() {
+//         let s = "abc {icon bool_attr id=\"ab\\\"c\" num=1 val=.5; text   }{end id=\"e\"}";
+//         let mut parser = RawTokenizer::new(Box::new(s.bytes()));
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::InlineText(
+//                 Span::new2(0, 1, 0, 4, 1, 4),
+//                 "abc ".to_string()
+//             ))
+//         );
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::CurlyTagStart(
+//                 Span::new2(5, 1, 5, 11, 1, 11),
+//                 "{icon ".to_string()
+//             ))
+//         );
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::AttributeName(
+//                 Span::new2(11, 1, 11, 20, 1, 20),
+//                 "bool_attr".to_string()
+//             ))
+//         );
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::AttributeName(
+//                 Span::new2(20, 1, 20, 23, 1, 23),
+//                 "id=".to_string()
+//             ))
+//         );
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::StringValue(
+//                 Span::new2(23, 1, 23, 30, 1, 30),
+//                 "\"ab\\\"c\"".to_string()
+//             ))
+//         );
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::AttributeName(
+//                 Span::new2(30, 1, 30, 35, 1, 35),
+//                 " num=".to_string()
+//             ))
+//         );
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::NumericValue(
+//                 Span::new2(35, 1, 35, 36, 1, 36),
+//                 "1".to_string()
+//             ))
+//         );
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::AttributeName(
+//                 Span::new2(37, 1, 37, 42, 1, 42),
+//                 " val=".to_string()
+//             ))
+//         );
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::NumericValue(
+//                 Span::new2(41, 1, 41, 43, 1, 43),
+//                 ".5".to_string()
+//             ))
+//         );
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::TextMarker(Span::new2(44, 1, 44, 45, 1, 45), ';'))
+//         );
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::InlineText(
+//                 Span::new2(44, 1, 44, 52, 1, 52),
+//                 " text   ".to_string()
+//             ))
+//         );
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::CurlyTagEnd(Span::new2(53, 1, 53, 54, 1, 54)))
+//         );
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::CurlyTagStart(
+//                 Span::new2(53, 1, 53, 58, 1, 58),
+//                 "{end ".to_string()
+//             ))
+//         );
+//         // println!("{:?}", parser);
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::AttributeName(
+//                 Span::new2(59, 1, 59, 62, 1, 62),
+//                 "id=".to_string()
+//             ))
+//         );
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::StringValue(
+//                 Span::new2(61, 1, 61, 64, 1, 64),
+//                 "\"e\"".to_string()
+//             ))
+//         );
+//         assert_eq!(
+//             parser.next(),
+//             Some(RawToken::CurlyTagEnd(
+//                 Span::new2(64, 1, 64, 65, 1, 65)
+//             ))
+//         );
+//         assert_eq!(parser.next(), None);
+//     }
+// }

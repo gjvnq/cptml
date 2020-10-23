@@ -35,7 +35,7 @@ impl PeekReader {
     }
 
     // 0 is the element you have just popped.
-    pub fn peek(&mut self, dist: isize) -> char {
+    pub fn peek(&self, dist: isize) -> char {
         if !(-PEEK_RESERVE_I + 1 <= dist && dist <= PEEK_RESERVE_I) {
             panic!(
                 "PeekReader::peek(n={}), n must be between {} and {}",
