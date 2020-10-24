@@ -123,3 +123,42 @@ fn parse_inline_text_4() {
         ))
     );
 }
+
+#[test]
+fn parse_inline_text_5() {
+    let mut input = quick_input("\n a { < | } > bc  \n");
+    let mut state = State {
+        mode: Mode::StartOfInput,
+        after_whitespace: None,
+        text_escape: TextEscapeState::Normal,
+        inside_tag: TagType::NotTag,
+    };
+    let ans = parse_inline_text(&mut input, &mut state);
+    assert_eq!(
+        ans,
+        Ok(Token::InlineText(
+            Span::new(),
+            "\n a { < | } > bc  \n".to_string(),
+            "\na { < | } > bc\n".to_string()
+        ))
+    );
+}
+#[test]
+fn parse_inline_text_6() {
+    let mut input = quick_input("\n a {bc  \n");
+    let mut state = State {
+        mode: Mode::StartOfInput,
+        after_whitespace: None,
+        text_escape: TextEscapeState::Normal,
+        inside_tag: TagType::NotTag,
+    };
+    let ans = parse_inline_text(&mut input, &mut state);
+    assert_eq!(
+        ans,
+        Ok(Token::InlineText(
+            Span::new(),
+            "\n a ".to_string(),
+            "\na ".to_string()
+        ))
+    );
+}

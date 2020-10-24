@@ -159,7 +159,8 @@ fn parse_inline_text(src: &mut PeekReader, state: &mut State) -> Result<Token, T
             // Check if we need to change state
             let pop_special =
                 pop_c == '{' || pop_c == '}' || pop_c == '<' || pop_c == '>' || pop_c == '|';
-            if pop_special && last_c != ' ' && next_c != ' ' {
+            // println!("pop_special={}, last_c={:?} next_c={:?}", pop_special, last_c, next_c);
+            if pop_special && (last_c != ' ' || next_c != ' ') {
                 break;
             }
             ans_raw.push(pop_c);
