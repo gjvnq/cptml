@@ -4,6 +4,7 @@
 #![allow(unused_variables)]
 
 
+use crate::hacks::is_valid_id_char;
 use crate::hacks::is_valid_id_first_char;
 use crate::hacks::is_valid_id_next_char;
 use crate::hacks::u32_to_char;
@@ -338,7 +339,7 @@ fn parse_tag(src: &mut PeekReader, state: &mut State) -> Result<Token, Tokenizer
         if first && pop_c == '!' {
             name.special = true;
             name.local.push(pop_c);
-        } else if pop_c.is_alphabetic() {
+        } else if is_valid_id_char(name.local.len(), pop_c) {
             name.local.push(pop_c);
         } else if pop_c == ':' && name.prefix.len() == 0 {
             name.prefix = name.local.clone();
@@ -353,7 +354,7 @@ fn parse_tag(src: &mut PeekReader, state: &mut State) -> Result<Token, Tokenizer
             return Err(TokenizerError::IllegalCharMsg(
                 src.get_pos(),
                 pop_c,
-                "alphanumeric".to_string(),
+                "valid id char".to_string(),
             ));
         }
 
@@ -378,8 +379,41 @@ fn parse_tag(src: &mut PeekReader, state: &mut State) -> Result<Token, Tokenizer
 }
 
 fn parse_attr_name(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
-    let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
-    unimplemented!()
+    let mut name = BasicName::new();
+    let mut raw_name = "".to_string();
+    let start_pos = src.get_pos();
+    let mut first = true;
+
+    loop {
+        let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
+        if !first && pop_c == '=' {
+            raw_name.push(src.pop());
+            break;
+        }
+        if first && pop_c == '!' {
+            name.special = true;
+            name.local.push(pop_c);
+        } else if is_valid_id_char(name.local.len(), pop_c) {
+            name.local.push(pop_c);
+        } else if pop_c == ':' && name.prefix.len() == 0 {
+            name.prefix = name.local.clone();
+            name.local.clear();
+        } else {
+            return Err(TokenizerError::IllegalCharMsg(
+                src.get_pos(),
+                pop_c,
+                "valid id char".to_string(),
+            ));
+        }
+
+        first = false;
+        raw_name.push(src.pop());
+    }
+    if name.local.len() == 0 {
+        return Err(TokenizerError::MissingLocalName(start_pos));
+    }
+
+    return Ok(Token::AttributeName(Span::new(), raw_name, name));
 }
 
 fn parse_string_value(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {

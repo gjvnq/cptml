@@ -5,11 +5,18 @@ pub trait ByteReader: Debug + Iterator<Item = u8> {}
 impl ByteReader for std::str::Bytes<'_> {}
 
 pub fn is_valid_id_first_char(c: char) -> bool {
-    c.is_alphabetic()
+    c == '_' || c.is_alphabetic()
 }
 
 pub fn is_valid_id_next_char(c: char) -> bool {
     c == '_' || c.is_alphanumeric()
+}
+
+pub fn is_valid_id_char(l: usize, c: char) -> bool {
+    if l == 0 {
+        return is_valid_id_first_char(c);
+    }
+    return is_valid_id_next_char(c);
 }
 
 pub fn u32_to_char(val: u32) -> Option<char> {

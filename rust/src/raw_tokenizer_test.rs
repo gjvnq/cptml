@@ -260,7 +260,7 @@ fn parse_tag_7() {
         Err(TokenizerError::IllegalCharMsg(
             Position::new2(12, 1, 12),
             ':',
-            "alphanumeric".to_string()
+            "valid id char".to_string()
         ))
     );
 }
@@ -362,4 +362,79 @@ fn parse_tag_13() {
     let mut state = State::new();
     let ans = parse_tag(&mut input, &mut state);
     assert_eq!(ans, Ok(Token::CurlyTagEnd(Span::new(), '}')));
+}
+
+#[test]
+fn parse_attr_name_1() {
+    let mut input = quick_input("attr=");
+    let mut state = State::new();
+    let ans = parse_attr_name(&mut input, &mut state);
+    assert_eq!(
+        ans,
+        Ok(Token::AttributeName(
+            Span::new(),
+            "attr=".to_string(),
+            BasicName {
+                view: "".to_string(),
+                special: false,
+                prefix: "".to_string(),
+                local: "attr".to_string()
+            }
+        ))
+    );
+}
+
+#[test]
+fn parse_attr_name_2() {
+    let mut input = quick_input("!id=");
+    let mut state = State::new();
+    let ans = parse_attr_name(&mut input, &mut state);
+    assert_eq!(
+        ans,
+        Ok(Token::AttributeName(
+            Span::new(),
+            "!id=".to_string(),
+            BasicName {
+                view: "".to_string(),
+                special: true,
+                prefix: "".to_string(),
+                local: "!id".to_string()
+            }
+        ))
+    );
+}
+
+#[test]
+fn parse_attr_name_3() {
+    let mut input = quick_input("ns1:attr_val=");
+    let mut state = State::new();
+    let ans = parse_attr_name(&mut input, &mut state);
+    assert_eq!(
+        ans,
+        Ok(Token::AttributeName(
+            Span::new(),
+            "ns1:attr_val=".to_string(),
+            BasicName {
+                view: "".to_string(),
+                special: false,
+                prefix: "ns1".to_string(),
+                local: "attr_val".to_string()
+            }
+        ))
+    );
+}
+
+#[test]
+fn parse_attr_name_4() {
+    let mut input = quick_input("ns1:1attr_val=");
+    let mut state = State::new();
+    let ans = parse_attr_name(&mut input, &mut state);
+    assert_eq!(
+        ans,
+        Err(TokenizerError::IllegalCharMsg(
+            Position::new2(4,1,4),
+            '1',
+            "valid id char".to_string()
+        ))
+    );
 }
