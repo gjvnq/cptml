@@ -61,9 +61,8 @@ pub enum Token {
     NumericValue(Span, String, Number),
     StringValue(Span, String, String),
     CurlyTagStart(Span, String, BasicName),
-    CurlyTagEnd(Span),
-    PointyTagStart(Span, String, BasicName),
-    PointyTagEnd(Span, char),
+    CurlyTagEnd(Span, char),
+    PointyTag(Span, String, BasicName, char, char),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -156,12 +155,12 @@ pub enum TokenizerError {
 }
 
 fn next_state(src: &mut PeekReader, state: &mut State) -> Option<TokenizerError> {
-    let (last_c, pop_c, next_c) = (src.peek(-1), src.peek(0), src.peek(1));
+    let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
     unimplemented!()
 }
 
 fn parse_whitespace(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
-    let (last_c, pop_c, next_c) = (src.peek(-1), src.peek(0), src.peek(1));
+    let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
     unimplemented!()
 }
 
@@ -299,7 +298,7 @@ fn parse_inline_text(src: &mut PeekReader, state: &mut State) -> Result<Token, T
     return Ok(Token::InlineText(Span::new(), ans_raw, ans_parsed));
 }
 
-fn parse_tag_start(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
+fn parse_tag(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
     let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
     let mut name = BasicName::new();
     let mut first = true;
@@ -308,16 +307,19 @@ fn parse_tag_start(src: &mut PeekReader, state: &mut State) -> Result<Token, Tok
     let start_pos = src.get_pos();
 
     let tag_type = match pop_c {
-        '<' => TagType::PointyTag,
+        '<' | '|' => TagType::PointyTag,
         '{' => TagType::CurlyTag,
+        '}' => return Ok(Token::CurlyTagEnd(Span::new(), pop_c)),
         _ => {
             return Err(TokenizerError::IllegalChar2(
                 src.get_pos(),
                 pop_c,
-                vec!['<', '{'],
+                vec!['<', '>', '{', '}'],
             ))
         }
     };
+    let open = pop_c;
+    let mut close = '\0';
     raw_name.push(src.pop());
 
     loop {
@@ -329,6 +331,8 @@ fn parse_tag_start(src: &mut PeekReader, state: &mut State) -> Result<Token, Tok
             break;
         }
         if tag_type == TagType::PointyTag && (pop_c == '|' || pop_c == '>') {
+            close = pop_c;
+            raw_name.push(src.pop());
             break;
         }
         if first && pop_c == '!' {
@@ -360,40 +364,37 @@ fn parse_tag_start(src: &mut PeekReader, state: &mut State) -> Result<Token, Tok
     if has_view {
         return Err(TokenizerError::MissingTerminator(src.get_pos(), ')'));
     }
-    if name.local.len() == 0 {
+    if name.local.len() == 0 && !(tag_type == TagType::PointyTag && open == '|' && close == '>') {
         return Err(TokenizerError::MissingLocalName(start_pos));
     }
 
     match tag_type {
         TagType::CurlyTag => return Ok(Token::CurlyTagStart(Span::new(), raw_name, name)),
-        TagType::PointyTag => return Ok(Token::PointyTagStart(Span::new(), raw_name, name)),
+        TagType::PointyTag => {
+            return Ok(Token::PointyTag(Span::new(), raw_name, name, open, close))
+        }
         _ => unreachable!(),
     }
 }
 
 fn parse_attr_name(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
-    let (last_c, pop_c, next_c) = (src.peek(-1), src.peek(0), src.peek(1));
+    let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
     unimplemented!()
 }
 
 fn parse_string_value(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
-    let (last_c, pop_c, next_c) = (src.peek(-1), src.peek(0), src.peek(1));
+    let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
     unimplemented!()
 }
 
 fn parse_numeric_value(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
-    let (last_c, pop_c, next_c) = (src.peek(-1), src.peek(0), src.peek(1));
-    unimplemented!()
-}
-
-fn parse_tag_end(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
-    let (last_c, pop_c, next_c) = (src.peek(-1), src.peek(0), src.peek(1));
+    let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
     unimplemented!()
 }
 
 // the other functions don't actually calculate the span, they just return a dummy value for it
 fn parse_next_token(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
-    let (last_c, pop_c, next_c) = (src.peek(-1), src.peek(0), src.peek(1));
+    let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
     let mut span = Span::new();
     span.start = src.get_pos();
     // do stuff

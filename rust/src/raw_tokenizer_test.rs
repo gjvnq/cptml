@@ -125,10 +125,10 @@ fn parse_inline_text_6() {
 }
 
 #[test]
-fn parse_tag_start_1() {
+fn parse_tag_1() {
     let mut input = quick_input("{icon");
     let mut state = State::new();
-    let ans = parse_tag_start(&mut input, &mut state);
+    let ans = parse_tag(&mut input, &mut state);
     assert_eq!(
         ans,
         Ok(Token::CurlyTagStart(
@@ -145,10 +145,10 @@ fn parse_tag_start_1() {
 }
 
 #[test]
-fn parse_tag_start_2() {
+fn parse_tag_2() {
     let mut input = quick_input("{icon}");
     let mut state = State::new();
-    let ans = parse_tag_start(&mut input, &mut state);
+    let ans = parse_tag(&mut input, &mut state);
     assert_eq!(
         ans,
         Ok(Token::CurlyTagStart(
@@ -165,10 +165,10 @@ fn parse_tag_start_2() {
 }
 
 #[test]
-fn parse_tag_start_3() {
+fn parse_tag_3() {
     let mut input = quick_input("{!icon;");
     let mut state = State::new();
-    let ans = parse_tag_start(&mut input, &mut state);
+    let ans = parse_tag(&mut input, &mut state);
     assert_eq!(
         ans,
         Ok(Token::CurlyTagStart(
@@ -185,70 +185,76 @@ fn parse_tag_start_3() {
 }
 
 #[test]
-fn parse_tag_start_4() {
+fn parse_tag_4() {
     let mut input = quick_input("<ns:icon|");
     let mut state = State::new();
-    let ans = parse_tag_start(&mut input, &mut state);
+    let ans = parse_tag(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::PointyTagStart(
+        Ok(Token::PointyTag(
             Span::new(),
-            "<ns:icon".to_string(),
+            "<ns:icon|".to_string(),
             BasicName {
                 view: "".to_string(),
                 special: false,
                 prefix: "ns".to_string(),
                 local: "icon".to_string()
-            }
+            },
+            '<',
+            '|'
         ))
     );
 }
 
 #[test]
-fn parse_tag_start_5() {
+fn parse_tag_5() {
     let mut input = quick_input("<!ns:icon|");
     let mut state = State::new();
-    let ans = parse_tag_start(&mut input, &mut state);
+    let ans = parse_tag(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::PointyTagStart(
+        Ok(Token::PointyTag(
             Span::new(),
-            "<!ns:icon".to_string(),
+            "<!ns:icon|".to_string(),
             BasicName {
                 view: "".to_string(),
                 special: true,
                 prefix: "!ns".to_string(),
                 local: "icon".to_string()
-            }
+            },
+            '<',
+            '|'
         ))
     );
 }
 
 #[test]
-fn parse_tag_start_6() {
+fn parse_tag_6() {
     let mut input = quick_input("<(t)tei:line|");
     let mut state = State::new();
-    let ans = parse_tag_start(&mut input, &mut state);
+    let ans = parse_tag(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::PointyTagStart(
+        Ok(Token::PointyTag(
             Span::new(),
-            "<(t)tei:line".to_string(),
+            "<(t)tei:line|".to_string(),
             BasicName {
                 view: "t".to_string(),
                 special: false,
                 prefix: "tei".to_string(),
                 local: "line".to_string()
-            }
+            },
+            '<',
+            '|'
         ))
     );
 }
 
 #[test]
-fn parse_tag_start_7() {
+fn parse_tag_7() {
     let mut input = quick_input("<(t)tei:line:a|");
     let mut state = State::new();
-    let ans = parse_tag_start(&mut input, &mut state);
+    let ans = parse_tag(&mut input, &mut state);
     assert_eq!(
         ans,
         Err(TokenizerError::IllegalCharMsg(
@@ -260,26 +266,100 @@ fn parse_tag_start_7() {
 }
 
 #[test]
-fn parse_tag_start_8() {
+fn parse_tag_8() {
     let mut input = quick_input("<(ttei:line|");
     let mut state = State::new();
-    let ans = parse_tag_start(&mut input, &mut state);
+    let ans = parse_tag(&mut input, &mut state);
     assert_eq!(
         ans,
         Err(TokenizerError::MissingTerminator(
-            Position::new2(11, 1, 11),
+            Position::new2(12, 1, 12),
             ')'
         ))
     );
 }
 
 #[test]
-fn parse_tag_start_9() {
+fn parse_tag_9() {
     let mut input = quick_input("<ns:>");
     let mut state = State::new();
-    let ans = parse_tag_start(&mut input, &mut state);
+    let ans = parse_tag(&mut input, &mut state);
     assert_eq!(
         ans,
         Err(TokenizerError::MissingLocalName(Position::new2(0, 1, 0),))
     );
+}
+
+#[test]
+fn parse_tag_10() {
+    let mut input = quick_input("|(t)tei:line>");
+    let mut state = State::new();
+    let ans = parse_tag(&mut input, &mut state);
+    assert_eq!(
+        ans,
+        Ok(Token::PointyTag(
+            Span::new(),
+            "|(t)tei:line>".to_string(),
+            BasicName {
+                view: "t".to_string(),
+                special: false,
+                prefix: "tei".to_string(),
+                local: "line".to_string()
+            },
+            '|',
+            '>'
+        ))
+    );
+}
+
+#[test]
+fn parse_tag_11() {
+    let mut input = quick_input("|(t)>");
+    let mut state = State::new();
+    let ans = parse_tag(&mut input, &mut state);
+    assert_eq!(
+        ans,
+        Ok(Token::PointyTag(
+            Span::new(),
+            "|(t)>".to_string(),
+            BasicName {
+                view: "t".to_string(),
+                special: false,
+                prefix: "".to_string(),
+                local: "".to_string()
+            },
+            '|',
+            '>'
+        ))
+    );
+}
+
+#[test]
+fn parse_tag_12() {
+    let mut input = quick_input("|>");
+    let mut state = State::new();
+    let ans = parse_tag(&mut input, &mut state);
+    assert_eq!(
+        ans,
+        Ok(Token::PointyTag(
+            Span::new(),
+            "|>".to_string(),
+            BasicName {
+                view: "".to_string(),
+                special: false,
+                prefix: "".to_string(),
+                local: "".to_string()
+            },
+            '|',
+            '>'
+        ))
+    );
+}
+
+#[test]
+fn parse_tag_13() {
+    let mut input = quick_input("}");
+    let mut state = State::new();
+    let ans = parse_tag(&mut input, &mut state);
+    assert_eq!(ans, Ok(Token::CurlyTagEnd(Span::new(), '}')));
 }
