@@ -15,11 +15,22 @@ use core::fmt::Debug;
 use std::mem;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RawName {
+pub struct BasicName {
     pub view: String,
     pub special: bool,
     pub prefix: String,
     pub local: String,
+}
+
+impl BasicName {
+    fn new() -> BasicName {
+        BasicName {
+            view: "".to_string(),
+            special: false,
+            prefix: "".to_string(),
+            local: "".to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -46,12 +57,12 @@ pub enum Token {
     InlineText(Span, String, String),
     InlineMathText(Span, String, String),
     DisplayMathText(Span, String, String),
-    AttributeName(Span, String, RawName),
+    AttributeName(Span, String, BasicName),
     NumericValue(Span, String, Number),
     StringValue(Span, String, String),
-    CurlyTagStart(Span, String, RawName),
+    CurlyTagStart(Span, String, BasicName),
     CurlyTagEnd(Span),
-    PointyTagStart(Span, String, RawName),
+    PointyTagStart(Span, String, BasicName),
     PointyTagEnd(Span, char),
 }
 
@@ -103,6 +114,17 @@ struct State {
     inside_tag: TagType,
 }
 
+impl State {
+    fn new() -> State {
+        State {
+            mode: Mode::StartOfInput,
+            after_whitespace: None,
+            text_escape: TextEscapeState::Normal,
+            inside_tag: TagType::NotTag,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TagType {
     NotTag,
@@ -126,6 +148,10 @@ enum WhitesapeMode {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenizerError {
     IllegalChar(Position, char),
+    IllegalChar2(Position, char, Vec<char>),
+    IllegalCharMsg(Position, char, String),
+    MissingTerminator(Position, char),
+    MissingLocalName(Position),
     IllegalEscapeSequence(Position, String),
 }
 
@@ -274,8 +300,75 @@ fn parse_inline_text(src: &mut PeekReader, state: &mut State) -> Result<Token, T
 }
 
 fn parse_tag_start(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
-    let (last_c, pop_c, next_c) = (src.peek(-1), src.peek(0), src.peek(1));
-    unimplemented!()
+    let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
+    let mut name = BasicName::new();
+    let mut first = true;
+    let mut raw_name = "".to_string();
+    let mut has_view = false;
+    let start_pos = src.get_pos();
+
+    let tag_type = match pop_c {
+        '<' => TagType::PointyTag,
+        '{' => TagType::CurlyTag,
+        _ => {
+            return Err(TokenizerError::IllegalChar2(
+                src.get_pos(),
+                pop_c,
+                vec!['<', '{'],
+            ))
+        }
+    };
+    raw_name.push(src.pop());
+
+    loop {
+        let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
+        if pop_c == '\0' || pop_c == ' ' {
+            break;
+        }
+        if tag_type == TagType::CurlyTag && (pop_c == ';' || pop_c == '}') {
+            break;
+        }
+        if tag_type == TagType::PointyTag && (pop_c == '|' || pop_c == '>') {
+            break;
+        }
+        if first && pop_c == '!' {
+            name.special = true;
+            name.local.push(pop_c);
+        } else if pop_c.is_alphabetic() {
+            name.local.push(pop_c);
+        } else if pop_c == ':' && name.prefix.len() == 0 {
+            name.prefix = name.local.clone();
+            name.local.clear();
+        } else if pop_c == '(' && tag_type == TagType::PointyTag && has_view == false {
+            has_view = true;
+        } else if pop_c == ')' && tag_type == TagType::PointyTag && has_view == true {
+            name.view = name.local.clone();
+            name.local.clear();
+            has_view = false;
+        } else {
+            return Err(TokenizerError::IllegalCharMsg(
+                src.get_pos(),
+                pop_c,
+                "alphanumeric".to_string(),
+            ));
+        }
+
+        first = false;
+        raw_name.push(src.pop());
+    }
+
+    if has_view {
+        return Err(TokenizerError::MissingTerminator(src.get_pos(), ')'));
+    }
+    if name.local.len() == 0 {
+        return Err(TokenizerError::MissingLocalName(start_pos));
+    }
+
+    match tag_type {
+        TagType::CurlyTag => return Ok(Token::CurlyTagStart(Span::new(), raw_name, name)),
+        TagType::PointyTag => return Ok(Token::PointyTagStart(Span::new(), raw_name, name)),
+        _ => unreachable!(),
+    }
 }
 
 fn parse_attr_name(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
