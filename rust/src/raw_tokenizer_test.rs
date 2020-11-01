@@ -542,3 +542,33 @@ fn parse_numeric_value_3() {
         ))
     );
 }
+
+#[test]
+fn parse_whitespace_1() {
+    let mut input = quick_input("   ");
+    let mut state = State::new();
+    let ans = parse_whitespace(&mut input, &mut state);
+    assert_eq!(
+        ans,
+        Ok(Token::Whitespace(
+            Span::new(),
+            "   ".to_string(),
+            " ".to_string()
+        ))
+    );
+}
+
+#[test]
+fn parse_whitespace_2() {
+    let mut input = quick_input(" \n  ");
+    let mut state = State::new();
+    let ans = parse_whitespace(&mut input, &mut state);
+    assert_eq!(
+        ans,
+        Ok(Token::Whitespace(
+            Span::new(),
+            " \n  ".to_string(),
+            "".to_string()
+        ))
+    );
+}

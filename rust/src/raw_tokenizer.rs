@@ -162,8 +162,26 @@ fn next_state(src: &mut PeekReader, state: &mut State) -> Option<TokenizerError>
 }
 
 fn parse_whitespace(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
-    let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
-    unimplemented!()
+    let mut ans = String::new();
+    let mut has_break = false;
+
+    loop {
+        let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
+        if !pop_c.is_whitespace() {
+            break;
+        }
+        if pop_c == '\n' {
+            has_break = true;
+        }
+        ans.push(src.pop());
+    }
+
+    let val = match has_break {
+        false => " ".to_string(),
+        true => String::new(),
+    };
+
+    return Ok(Token::Whitespace(Span::new(), ans, val));
 }
 
 fn parse_inline_text(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
@@ -177,8 +195,6 @@ fn parse_inline_text(src: &mut PeekReader, state: &mut State) -> Result<Token, T
 
     loop {
         let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
-        // println!("- {:?} {:?}", ans_raw, pop_c);
-        // println!("+ {:?} {:?}", ans_parsed, pop_c);
         if pop_c == '\0' {
             break;
         }
