@@ -29,7 +29,7 @@ fn parse_inline_text_1b() {
         Ok(Token::InlineText(
             Span::new(),
             "     \n".to_string(),
-            "\n".to_string()
+            "".to_string()
         ))
     );
 }
@@ -59,7 +59,7 @@ fn parse_inline_text_2b() {
         Ok(Token::InlineText(
             Span::new(),
             "\n a bc  \n".to_string(),
-            "\na bc\n".to_string()
+            "a bc\n".to_string()
         ))
     );
 }
@@ -74,7 +74,7 @@ fn parse_inline_text_3() {
         Ok(Token::InlineText(
             Span::new(),
             "\n \ta bc  \n\t z ".to_string(),
-            "\na bc\nz ".to_string()
+            "a bc\nz ".to_string()
         ))
     );
 }
@@ -89,7 +89,7 @@ fn parse_inline_text_4() {
         Ok(Token::InlineText(
             Span::new(),
             "\n   \\t   \\n\\u1F4DA;\\t".to_string(),
-            "\n\t   \n📚\t".to_string()
+            "\t   \n📚\t".to_string()
         ))
     );
 }
@@ -104,7 +104,7 @@ fn parse_inline_text_5() {
         Ok(Token::InlineText(
             Span::new(),
             "\n a { < | } > bc  \n".to_string(),
-            "\na { < | } > bc\n".to_string()
+            "a { < | } > bc\n".to_string()
         ))
     );
 }
@@ -119,7 +119,7 @@ fn parse_inline_text_6() {
         Ok(Token::InlineText(
             Span::new(),
             "\n a ".to_string(),
-            "\na ".to_string()
+            "a ".to_string()
         ))
     );
 }
@@ -571,4 +571,45 @@ fn parse_whitespace_2() {
             "".to_string()
         ))
     );
+}
+
+#[test]
+fn parse_next_token_1() {
+    let mut input = quick_input("{emph;\nhi }");
+    let mut state = State::new();
+    let ans = parse_next_token(&mut input, &mut state, 5);
+    assert_eq!(
+        ans,
+        Ok(Token::CurlyTagStart(
+            Span::new2(0, 1, 0, 5, 1, 5),
+            "{emph".to_string(),
+            BasicName {
+                view: "".to_string(),
+                special: false,
+                prefix: "".to_string(),
+                local: "emph".to_string()
+            }
+        ))
+    );
+    let ans = parse_next_token(&mut input, &mut state, 5);
+    assert_eq!(
+        ans,
+        Ok(Token::TextMarker(Span::new2(5, 1, 5, 6, 1, 6), ';'))
+    );
+    let ans = parse_next_token(&mut input, &mut state, 5);
+    assert_eq!(
+        ans,
+        Ok(Token::InlineText(
+            Span::new2(6, 1, 6, 10, 2, 3),
+            "\nhi ".to_string(),
+            "hi ".to_string()
+        ))
+    );
+    let ans = parse_next_token(&mut input, &mut state, 5);
+    assert_eq!(
+        ans,
+        Ok(Token::CurlyTagEnd(Span::new2(10, 2, 3, 11, 2, 4), '}'))
+    );
+    let ans = parse_next_token(&mut input, &mut state, 5);
+    assert_eq!(ans, Err(TokenizerError::EndOfInput));
 }

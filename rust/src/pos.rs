@@ -46,6 +46,11 @@ impl Span {
     pub fn rotate(&mut self) {
         self.start = self.end;
     }
+
+    // in bytes
+    pub fn len(self) -> usize {
+        self.end.byte - self.start.byte
+    }
 }
 
 impl Position {
