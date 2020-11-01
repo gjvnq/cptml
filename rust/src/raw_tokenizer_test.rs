@@ -498,3 +498,47 @@ fn parse_string_value_4() {
         ))
     );
 }
+
+#[test]
+fn parse_numeric_value_1() {
+    let mut input = quick_input("1_000");
+    let mut state = State::new();
+    let ans = parse_numeric_value(&mut input, &mut state);
+    assert_eq!(
+        ans,
+        Ok(Token::NumericValue(
+            Span::new(),
+            "1_000".to_string(),
+            Number::Integer(1000)
+        ))
+    );
+}
+
+#[test]
+fn parse_numeric_value_2() {
+    let mut input = quick_input("1_000.3__4");
+    let mut state = State::new();
+    let ans = parse_numeric_value(&mut input, &mut state);
+    assert_eq!(
+        ans,
+        Ok(Token::NumericValue(
+            Span::new(),
+            "1_000.3__4".to_string(),
+            Number::Float(1000.34)
+        ))
+    );
+}
+
+#[test]
+fn parse_numeric_value_3() {
+    let mut input = quick_input("_");
+    let mut state = State::new();
+    let ans = parse_numeric_value(&mut input, &mut state);
+    assert_eq!(
+        ans,
+        Err(TokenizerError::IllegalNumber(
+            Span::new2(0, 1, 0, 1, 1, 1),
+            "_".to_string()
+        ))
+    );
+}

@@ -153,6 +153,7 @@ pub enum TokenizerError {
     MissingTerminator(Position, char),
     MissingLocalName(Position),
     IllegalEscapeSequence(Position, String),
+    IllegalNumber(Span, String),
 }
 
 fn next_state(src: &mut PeekReader, state: &mut State) -> Option<TokenizerError> {
@@ -515,8 +516,46 @@ fn parse_string_value(src: &mut PeekReader, state: &mut State) -> Result<Token, 
 }
 
 fn parse_numeric_value(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
-    let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
-    unimplemented!()
+    let mut buf = "".to_string();
+    let mut raw = "".to_string();
+    let mut dot = false;
+    let mut span = Span::new_from(src.get_pos());
+
+    loop {
+        let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
+        if pop_c == '\0' || pop_c == '}' || pop_c == ';' || pop_c == '>' || pop_c == '|' {
+            break;
+        }
+        if pop_c == '_' {
+            // do nothing
+        } else if pop_c.is_ascii_digit() {
+            buf.push(pop_c);
+        } else if dot == false && pop_c == '.' {
+            dot = true;
+            buf.push('.');
+        } else {
+            return Err(TokenizerError::IllegalCharMsg(
+                src.get_pos(),
+                pop_c,
+                "ASCII digit".to_string(),
+            ));
+        }
+
+        raw.push(src.pop());
+    }
+    span.end = src.get_pos();
+
+    if dot {
+        match buf.parse::<f64>() {
+            Ok(v) => return Ok(Token::NumericValue(Span::new(), raw, Number::Float(v))),
+            _ => return Err(TokenizerError::IllegalNumber(span, raw)),
+        };
+    } else {
+        match buf.parse::<i64>() {
+            Ok(v) => return Ok(Token::NumericValue(Span::new(), raw, Number::Integer(v))),
+            _ => return Err(TokenizerError::IllegalNumber(span, raw)),
+        };
+    }
 }
 
 // the other functions don't actually calculate the span, they just return a dummy value for it
