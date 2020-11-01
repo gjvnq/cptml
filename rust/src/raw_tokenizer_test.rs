@@ -432,9 +432,69 @@ fn parse_attr_name_4() {
     assert_eq!(
         ans,
         Err(TokenizerError::IllegalCharMsg(
-            Position::new2(4,1,4),
+            Position::new2(4, 1, 4),
             '1',
             "valid id char".to_string()
+        ))
+    );
+}
+
+#[test]
+fn parse_string_value_1() {
+    let mut input = quick_input("\"\"");
+    let mut state = State::new();
+    let ans = parse_string_value(&mut input, &mut state);
+    assert_eq!(
+        ans,
+        Ok(Token::StringValue(
+            Span::new(),
+            "\"\"".to_string(),
+            "".to_string()
+        ))
+    );
+}
+
+#[test]
+fn parse_string_value_2() {
+    let mut input = quick_input("\"abc\"");
+    let mut state = State::new();
+    let ans = parse_string_value(&mut input, &mut state);
+    assert_eq!(
+        ans,
+        Ok(Token::StringValue(
+            Span::new(),
+            "\"abc\"".to_string(),
+            "abc".to_string()
+        ))
+    );
+}
+
+#[test]
+fn parse_string_value_3() {
+    let mut input = quick_input("\"\\\"\"");
+    let mut state = State::new();
+    let ans = parse_string_value(&mut input, &mut state);
+    assert_eq!(
+        ans,
+        Ok(Token::StringValue(
+            Span::new(),
+            "\"\\\"\"".to_string(),
+            "\"".to_string()
+        ))
+    );
+}
+
+#[test]
+fn parse_string_value_4() {
+    let mut input = quick_input("\"\\u222B;\"");
+    let mut state = State::new();
+    let ans = parse_string_value(&mut input, &mut state);
+    assert_eq!(
+        ans,
+        Ok(Token::StringValue(
+            Span::new(),
+            "\"\\u222B;\"".to_string(),
+            "∫".to_string()
         ))
     );
 }

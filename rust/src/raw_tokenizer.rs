@@ -418,7 +418,100 @@ fn parse_attr_name(src: &mut PeekReader, state: &mut State) -> Result<Token, Tok
 
 fn parse_string_value(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
     let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
-    unimplemented!()
+    let mut raw_val = "".to_string();
+    let mut val = "".to_string();
+    let mut buf_unicode = "".to_string();
+    let mut mode = TextEscapeState::Normal;
+
+    // Check start char
+    if pop_c != '"' {
+        return Err(TokenizerError::IllegalChar2(
+            src.get_pos(),
+            pop_c,
+            vec!['"'],
+        ));
+    }
+    raw_val.push(src.pop());
+
+    loop {
+        let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
+        println!("pop_c={:?} mode={:?}", pop_c, mode);
+        if pop_c == '\0' {
+            return Err(TokenizerError::IllegalChar2(
+                src.get_pos(),
+                pop_c,
+                vec!['"'],
+            ));
+        }
+        if mode == TextEscapeState::Normal {
+            if pop_c == '"' {
+                raw_val.push(src.pop());
+                break;
+            } else if pop_c == '\\' {
+                mode = match next_c {
+                    'u' => TextEscapeState::Unicode,
+                    _ => TextEscapeState::Slash,
+                };
+                buf_unicode.clear();
+            } else {
+                val.push(pop_c);
+            }
+        } else if mode == TextEscapeState::Slash {
+            let real_c = match pop_c {
+                '"' => '"',
+                '\\' => '\\',
+                'a' => '\x07',
+                'f' => '\x0C',
+                'n' => '\n',
+                'r' => '\r',
+                't' => '\t',
+                'v' => '\x0B',
+                _ => '\0',
+            };
+            if real_c == '\0' {
+                let s_err = format!("\\{}", next_c);
+                return Err(TokenizerError::IllegalEscapeSequence(src.get_pos(), s_err));
+            } else {
+                val.push(real_c);
+                mode = TextEscapeState::Normal;
+            }
+        } else if mode == TextEscapeState::Unicode {
+            fn ret_uni_err(
+                src: &PeekReader,
+                buf_unicode: &String,
+            ) -> Result<Token, TokenizerError> {
+                let s_err = "\\u".to_string() + &buf_unicode;
+                return Err(TokenizerError::IllegalEscapeSequence(src.get_pos(), s_err));
+            }
+
+            if buf_unicode.len() == 0 && pop_c == 'u' {
+                // do nothing
+            } else if pop_c == ';' {
+                // finish
+                let hex_val = match u32::from_str_radix(&buf_unicode, 16) {
+                    Ok(x) => x,
+                    _ => return ret_uni_err(src, &buf_unicode),
+                };
+                let real_c = match u32_to_char(hex_val) {
+                    Some(c) => c,
+                    _ => return ret_uni_err(src, &buf_unicode),
+                };
+                val.push(real_c);
+                mode = TextEscapeState::Normal;
+            } else if pop_c.is_digit(16) {
+                buf_unicode.push(pop_c);
+            } else {
+                buf_unicode.push(pop_c);
+                return ret_uni_err(src, &buf_unicode);
+            }
+        } else {
+            unreachable!();
+        }
+
+        raw_val.push(src.pop());
+    }
+
+    return Ok(Token::StringValue(Span::new(), raw_val, val));
 }
 
 fn parse_numeric_value(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
