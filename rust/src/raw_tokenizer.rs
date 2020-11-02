@@ -143,20 +143,20 @@ enum Mode {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ModeNew {
+    Default,
     StartOfInput,
-    CodeBlock, // TODO
+    CodeBlock,
     TextMarker,
     WhitespaceAttrName,
     Tag,
     InlineText,
-    InlineMathText,  // TODO
-    DisplayMathText, // TODO
+    Math,
     AttributeName,
     NumericValue,
     StringValue,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct State {
     mode: ModeNew,
     inside_tag: TagType,
@@ -177,6 +177,7 @@ enum TagType {
     CurlyTag,
     PointyTag,
 }
+
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TextEscapeState {
@@ -203,61 +204,117 @@ pub enum TokenizerError {
     EndOfInput,
 }
 
-fn next_state(src: &mut PeekReader, state: &mut State) -> Option<TokenizerError> {
-    let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
+const LIMIT_RETRYS: i32 = 10;
 
-    println!("{:?}", state.mode);
-    state.mode = match state.mode {
-        ModeNew::StartOfInput => ModeNew::InlineText,
-        ModeNew::TextMarker => ModeNew::InlineText,
-        ModeNew::InlineText => match pop_c {
-            '{' | '}' | '<' | '|' => ModeNew::Tag,
-            _ => {
-                return Some(TokenizerError::IllegalChar2(
-                    src.get_pos(),
-                    pop_c,
-                    vec!['{', '}', '<', '|'],
-                ))
-            }
-        },
-        ModeNew::Tag => match pop_c {
-            ';' => ModeNew::TextMarker,
-            '{' | '}' | '<' | '|' | '>' => ModeNew::Tag,
-            pop_c if pop_c.is_whitespace() => match state.inside_tag {
-                TagType::NotTag => ModeNew::InlineText,
-                _ => ModeNew::WhitespaceAttrName,
+fn next_state(src: &mut PeekReader, state: &mut State) -> Option<TokenizerError> {
+    let (last_c, pop_c, next_c, next_three) = (src.peek(0), src.peek(1), src.peek(2), src.peek_string(1, 3));
+    let mut i = 0;
+
+    loop {
+        if i > LIMIT_RETRYS {
+            panic!("next_state didn't stabilize, please file a bug report");
+        }
+        i += 1;
+        state.mode = match state.mode {
+            ModeNew::StartOfInput | ModeNew::Default => match pop_c {
+                '{' | '}' | '<' | '|' => ModeNew::Tag,
+                '$' => ModeNew::Math,
+                _ if next_three == "```" => ModeNew::CodeBlock,
+                _ => ModeNew::InlineText,
             },
-            _ => ModeNew::InlineText,
-        },
-        ModeNew::WhitespaceAttrName => ModeNew::AttributeName,
-        ModeNew::AttributeName => match pop_c {
-            '0'..='9' => ModeNew::NumericValue,
-            '"' => ModeNew::StringValue,
-            _ => {
-                return Some(TokenizerError::IllegalChar2(
-                    src.get_pos(),
-                    pop_c,
-                    vec!['"', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'],
-                ))
-            }
-        },
-        ModeNew::NumericValue | ModeNew::StringValue => match pop_c {
-            ';' => ModeNew::TextMarker,
-            '}' | '>' | '|' => ModeNew::Tag,
-            pop_c if pop_c.is_whitespace() => ModeNew::WhitespaceAttrName,
-            _ => {
-                return Some(TokenizerError::IllegalChar2(
-                    src.get_pos(),
-                    pop_c,
-                    vec![';', '}', '|', '>', ' ', '\n', '\t'],
-                ))
-            }
-        },
-        _ => unreachable!(),
-    };
+            ModeNew::TextMarker => ModeNew::Default,
+            ModeNew::InlineText => ModeNew::Default,
+            ModeNew::Tag => match pop_c {
+                ';' => ModeNew::TextMarker,
+                '{' | '}' | '<' | '|' | '>' => ModeNew::Tag,
+                _ if next_three == "```" => ModeNew::CodeBlock,
+                pop_c if pop_c.is_whitespace() => match state.inside_tag {
+                    TagType::NotTag => ModeNew::Default,
+                    _ => ModeNew::WhitespaceAttrName,
+                },
+                _ => ModeNew::Default,
+            },
+            ModeNew::WhitespaceAttrName => ModeNew::AttributeName,
+            ModeNew::AttributeName => match pop_c {
+                '0'..='9' => ModeNew::NumericValue,
+                '"' => ModeNew::StringValue,
+                _ => {
+                    return Some(TokenizerError::IllegalChar2(
+                        src.get_pos(),
+                        pop_c,
+                        vec!['"', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'],
+                    ))
+                }
+            },
+            ModeNew::NumericValue | ModeNew::StringValue => match pop_c {
+                ';' => ModeNew::TextMarker,
+                '}' | '>' | '|' => ModeNew::Tag,
+                pop_c if pop_c.is_whitespace() => ModeNew::WhitespaceAttrName,
+                _ => {
+                    return Some(TokenizerError::IllegalChar2(
+                        src.get_pos(),
+                        pop_c,
+                        vec![';', '}', '|', '>', ' ', '\n', '\t'],
+                    ))
+                }
+            },
+            ModeNew::CodeBlock => ModeNew::Default,
+            ModeNew::Math => ModeNew::Default,
+        };
+        if state.mode != ModeNew::Default {
+            break;
+        }
+    }
 
     return None;
 }
+
+fn parse_code_block(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
+    let mut start_num = 0;
+    let mut finished_start = false;
+    let mut counting = false;
+    let mut counter = 0;
+    let mut raw = String::new();
+    let mut val = String::new();
+
+    loop {
+        let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
+        if !finished_start {
+            if pop_c == '`' {
+                start_num += 1;
+            } else {
+                finished_start = true;
+                val.push(pop_c);
+            }
+        } else if counting {
+            if pop_c == '`' {
+                counter += 1;
+            } else {
+                if counter == start_num {
+                    break;
+                }
+                // add "missing" backticks
+                for _ in 0..counter {
+                    val.push('`');
+                }
+                counting = false;
+                counter = 0;
+                val.push(pop_c);
+            }
+        } else {
+            if pop_c == '`' {
+                counting = true;
+                counter = 1;
+            } else {
+                val.push(pop_c);
+            }
+        }
+        raw.push(src.pop());
+    }
+
+    Ok(Token::CodeBlock(Span::new(), raw, val))
+}
+
 
 fn parse_text_marker(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
     let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
@@ -271,6 +328,46 @@ fn parse_text_marker(src: &mut PeekReader, state: &mut State) -> Result<Token, T
             pop_c,
             vec![';'],
         ));
+    }
+}
+
+fn parse_math(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
+    let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
+    let mut raw = String::new();
+    let mut val = String::new();
+
+    if pop_c == '$' && next_c == '$' {
+        raw.push(src.pop());
+        raw.push(src.pop());
+    } else if pop_c == '$' {
+        raw.push(src.pop());
+    } else {
+        return Err(TokenizerError::IllegalChar2(
+            src.get_pos(),
+            pop_c,
+            vec!['$'],
+        ))
+    }
+    state.mode = ModeNew::Math;
+
+    let long_math = next_c == '$';
+
+    loop {
+        let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
+        raw.push(src.pop());
+        if long_math && pop_c == '$' && next_c == '$' {
+            raw.push(src.pop());
+            break;
+        }
+        if !long_math && pop_c == '$' {
+            break;
+        }
+        val.push(pop_c);
+    }
+
+    match long_math {
+        true => Ok(Token::DisplayMathText(Span::new(), raw, val)),
+        false => Ok(Token::InlineMathText(Span::new(), raw, val))
     }
 }
 
@@ -724,12 +821,11 @@ fn parse_numeric_value(src: &mut PeekReader, state: &mut State) -> Result<Token,
 fn parse_next_token(
     src: &mut PeekReader,
     state: &mut State,
-    limit: usize,
 ) -> Result<Token, TokenizerError> {
     let mut i = 0;
     loop {
-        if i >= limit {
-            panic!("parse_next_token exceded retry limit of {}", limit);
+        if i >= LIMIT_RETRYS {
+            panic!("parse_next_token didn't find a non-empty token, please file a bug report");
         }
         i += 1;
 
@@ -746,12 +842,12 @@ fn parse_next_token(
 
         let func = match state.mode {
             ModeNew::StartOfInput => unreachable!(),
+            ModeNew::Default => unreachable!(),
             ModeNew::InlineText => parse_inline_text,
             ModeNew::WhitespaceAttrName => parse_whitespace,
-            ModeNew::CodeBlock => unimplemented!(),
+            ModeNew::CodeBlock => parse_code_block,
             ModeNew::TextMarker => parse_text_marker,
-            ModeNew::InlineMathText => unimplemented!(),
-            ModeNew::DisplayMathText => unimplemented!(),
+            ModeNew::Math => parse_math,
             ModeNew::Tag => parse_tag,
             ModeNew::AttributeName => parse_attr_name,
             ModeNew::StringValue => parse_string_value,

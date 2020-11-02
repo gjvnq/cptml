@@ -34,6 +34,14 @@ impl PeekReader {
         self.pos
     }
 
+    pub fn peek_string(&self, from: isize, to: isize) -> String {
+        let mut ans = String::new();
+        for i in from..(to+1) {
+            ans.push(self.peek(i));
+        }
+        ans
+    }
+
     // 0 is the element you have just popped.
     pub fn peek(&self, dist: isize) -> char {
         if !(-PEEK_RESERVE_I + 1 <= dist && dist <= PEEK_RESERVE_I) {
