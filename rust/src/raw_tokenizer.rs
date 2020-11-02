@@ -63,7 +63,8 @@ pub enum Token {
     StringValue(Span, String, String),
     CurlyTagStart(Span, String, BasicName),
     CurlyTagEnd(Span, char),
-    PointyTag(Span, String, BasicName, char, char),
+    PointyTagStart(Span, String, BasicName),
+    PointyTagEnd(Span, char),
 }
 
 impl Token {
@@ -90,7 +91,9 @@ impl Token {
             *span = new_span;
         } else if let Token::CurlyTagEnd(ref mut span, _) = self {
             *span = new_span;
-        } else if let Token::PointyTag(ref mut span, _, _, _, _) = self {
+        } else if let Token::PointyTagStart(ref mut span, _, _) = self {
+            *span = new_span;
+        } else if let Token::PointyTagEnd(ref mut span, _) = self {
             *span = new_span;
         } else {
             unreachable!();
@@ -205,6 +208,7 @@ pub enum TokenizerError {
 fn next_state(src: &mut PeekReader, state: &mut State) -> Option<TokenizerError> {
     let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
 
+    println!("{:?}", state.mode);
     state.mode = match state.mode {
         ModeNew::StartOfInput => ModeNew::InlineText,
         ModeNew::TextMarker => ModeNew::InlineText,
@@ -220,6 +224,24 @@ fn next_state(src: &mut PeekReader, state: &mut State) -> Option<TokenizerError>
         },
         ModeNew::Tag => match pop_c {
             ';' => ModeNew::TextMarker,
+            '{' | '}' | '<' | '|' | '>' => ModeNew::Tag,
+            ' ' | '\n' | '\t' => ModeNew::WhitespaceAttrName,
+            _ => ModeNew::InlineText,
+        },
+        ModeNew::WhitespaceAttrName => ModeNew::AttributeName,
+        ModeNew::AttributeName => match pop_c {
+            '0'..='9' => ModeNew::NumericValue,
+            '"' => ModeNew::StringValue,
+            _ => {
+                return Some(TokenizerError::IllegalChar2(
+                    src.get_pos(),
+                    pop_c,
+                    vec!['"', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'],
+                ))
+            }
+        }
+        ModeNew::NumericValue | ModeNew::StringValue => match pop_c {
+            ';' => ModeNew::TextMarker,
             '}' | '|' | '>' => ModeNew::InlineText,
             ' ' | '\n' | '\t' => ModeNew::WhitespaceAttrName,
             _ => {
@@ -229,8 +251,7 @@ fn next_state(src: &mut PeekReader, state: &mut State) -> Option<TokenizerError>
                     vec![';', '}', '|', '>', ' ', '\n', '\t'],
                 ))
             }
-        },
-        ModeNew::WhitespaceAttrName => ModeNew::AttributeName,
+        }
         _ => unreachable!(),
     };
 
@@ -240,9 +261,9 @@ fn next_state(src: &mut PeekReader, state: &mut State) -> Option<TokenizerError>
 fn parse_text_marker(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
     let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
 
-    if pop_c == ';' {
+    if pop_c == ';' || pop_c == '|' {
         src.pop();
-        return Ok(Token::TextMarker(Span::new(), ';'));
+        return Ok(Token::TextMarker(Span::new(), pop_c));
     } else {
         return Err(TokenizerError::IllegalChar2(
             src.get_pos(),
@@ -418,13 +439,14 @@ fn parse_tag(src: &mut PeekReader, state: &mut State) -> Result<Token, Tokenizer
     let mut raw_name = "".to_string();
     let mut has_view = false;
     let start_pos = src.get_pos();
+    let open = pop_c;
 
-    if pop_c == '}' {
-        return Ok(Token::CurlyTagEnd(Span::new(), src.pop()));
-    }
-    let tag_type = match pop_c {
-        '<' | '|' => TagType::PointyTag,
-        '{' | '}' => TagType::CurlyTag,
+    let ans_kind = match pop_c {
+        '{' => Token::CurlyTagStart(Span::new(), String::new(), BasicName::new()),
+        '}' => Token::CurlyTagEnd(Span::new(), '}'),
+        '<' => Token::PointyTagStart(Span::new(), String::new(), BasicName::new()),
+        '>' => Token::PointyTagEnd(Span::new(), '>'),
+        '|' => Token::PointyTagEnd(Span::new(), '|'),
         _ => {
             return Err(TokenizerError::IllegalChar2(
                 src.get_pos(),
@@ -433,9 +455,17 @@ fn parse_tag(src: &mut PeekReader, state: &mut State) -> Result<Token, Tokenizer
             ))
         }
     };
-
-    let open = pop_c;
-    let mut close = '\0';
+    if pop_c == '}' {
+        return Ok(Token::CurlyTagEnd(Span::new(), src.pop()));
+    }
+    if pop_c == '>' {
+        return Ok(Token::PointyTagEnd(Span::new(), src.pop()));
+    }
+    let tag_type = match pop_c {
+        '<' | '|' => TagType::PointyTag,
+        '{' | '}' => TagType::CurlyTag,
+        _ => unreachable!()
+    };
     raw_name.push(src.pop());
 
     loop {
@@ -447,8 +477,6 @@ fn parse_tag(src: &mut PeekReader, state: &mut State) -> Result<Token, Tokenizer
             break;
         }
         if tag_type == TagType::PointyTag && (pop_c == '|' || pop_c == '>') {
-            close = pop_c;
-            raw_name.push(src.pop());
             break;
         }
         if first && pop_c == '!' {
@@ -480,16 +508,14 @@ fn parse_tag(src: &mut PeekReader, state: &mut State) -> Result<Token, Tokenizer
     if has_view {
         return Err(TokenizerError::MissingTerminator(src.get_pos(), ')'));
     }
-    if name.local.len() == 0 && !(tag_type == TagType::PointyTag && open == '|' && close == '>') {
+    if name.local.len() == 0 && !(tag_type == TagType::PointyTag && open == '|') {
         return Err(TokenizerError::MissingLocalName(start_pos));
     }
 
-    match tag_type {
-        TagType::CurlyTag => return Ok(Token::CurlyTagStart(Span::new(), raw_name, name)),
-        TagType::PointyTag => {
-            return Ok(Token::PointyTag(Span::new(), raw_name, name, open, close))
-        }
-        _ => unreachable!(),
+    match ans_kind {
+        Token::CurlyTagStart(_, _, _) => return Ok(Token::CurlyTagStart(Span::new(), raw_name, name)),
+        Token::PointyTagStart(_, _, _) => return Ok(Token::PointyTagStart(Span::new(), raw_name, name)),
+        _ => panic!("hi"),
     }
 }
 
