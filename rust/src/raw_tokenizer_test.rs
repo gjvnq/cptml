@@ -191,7 +191,7 @@ fn parse_tag_4() {
     let ans = parse_tag(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::PointyTagStart(
+        Ok(Token::PointyTagHead(
             Span::new(),
             "<ns:icon".to_string(),
             BasicName {
@@ -203,13 +203,7 @@ fn parse_tag_4() {
         ))
     );
     let ans = parse_tag(&mut input, &mut state);
-    assert_eq!(
-        ans,
-        Ok(Token::PointyTagEnd(
-            Span::new(),
-            '|'
-        ))
-    );
+    assert_eq!(ans, Ok(Token::PointyTagTail(Span::new(), '|')));
 }
 
 #[test]
@@ -219,7 +213,7 @@ fn parse_tag_5() {
     let ans = parse_tag(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::PointyTagStart(
+        Ok(Token::PointyTagHead(
             Span::new(),
             "<!ns:icon".to_string(),
             BasicName {
@@ -239,7 +233,7 @@ fn parse_tag_6() {
     let ans = parse_tag(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::PointyTagStart(
+        Ok(Token::PointyTagHead(
             Span::new(),
             "<(t)tei:line".to_string(),
             BasicName {
@@ -299,7 +293,7 @@ fn parse_tag_10() {
     let ans = parse_tag(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::PointyTagStart(
+        Ok(Token::PointyTagHead(
             Span::new(),
             "|(t)tei:line".to_string(),
             BasicName {
@@ -311,13 +305,7 @@ fn parse_tag_10() {
         ))
     );
     let ans = parse_tag(&mut input, &mut state);
-    assert_eq!(
-        ans,
-        Ok(Token::PointyTagEnd(
-            Span::new(),
-            '>',
-        ))
-    );
+    assert_eq!(ans, Ok(Token::PointyTagTail(Span::new(), '>',)));
 }
 
 #[test]
@@ -327,7 +315,7 @@ fn parse_tag_11() {
     let ans = parse_tag(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::PointyTagStart(
+        Ok(Token::PointyTagHead(
             Span::new(),
             "|(t)".to_string(),
             BasicName {
@@ -339,13 +327,7 @@ fn parse_tag_11() {
         ))
     );
     let ans = parse_tag(&mut input, &mut state);
-    assert_eq!(
-        ans,
-        Ok(Token::PointyTagEnd(
-            Span::new(),
-            '>',
-        ))
-    );
+    assert_eq!(ans, Ok(Token::PointyTagTail(Span::new(), '>',)));
 }
 
 #[test]
@@ -355,7 +337,7 @@ fn parse_tag_12() {
     let ans = parse_tag(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::PointyTagStart(
+        Ok(Token::PointyTagHead(
             Span::new(),
             "|".to_string(),
             BasicName {
@@ -367,13 +349,7 @@ fn parse_tag_12() {
         ))
     );
     let ans = parse_tag(&mut input, &mut state);
-    assert_eq!(
-        ans,
-        Ok(Token::PointyTagEnd(
-            Span::new(),
-            '>',
-        ))
-    );
+    assert_eq!(ans, Ok(Token::PointyTagTail(Span::new(), '>',)));
 }
 
 #[test]
@@ -747,7 +723,7 @@ fn parse_next_token_3() {
     let ans = parse_next_token(&mut input, &mut state, 5);
     assert_eq!(
         ans,
-        Ok(Token::PointyTagStart(
+        Ok(Token::PointyTagHead(
             Span::new2(0, 1, 0, 5, 1, 5),
             "<emph".to_string(),
             BasicName {
@@ -826,7 +802,7 @@ fn parse_next_token_3() {
     let ans = parse_next_token(&mut input, &mut state, 5);
     assert_eq!(
         ans,
-        Ok(Token::PointyTagEnd(Span::new2(28, 2, 20, 29, 2, 21), '|'))
+        Ok(Token::PointyTagTail(Span::new2(28, 2, 20, 29, 2, 21), '|'))
     );
     let ans = parse_next_token(&mut input, &mut state, 5);
     assert_eq!(
@@ -841,132 +817,136 @@ fn parse_next_token_3() {
     assert_eq!(ans, Err(TokenizerError::EndOfInput));
 }
 
-// #[test]
-// fn parse_next_token_3() {
-//     let mut input = quick_input("{poem;
-//   <(t)line|<(g)sentence|I, by attorney, bless thee from thy mother,|(t)line>
-//   <(t)line|Who prays continually for Richmond's good.|(g)sentence>|(t)line>
-//   <(t)line|<(g)sentence|So much for that.|(g)><(g)sentence|—The silent hours steal on,|(t)>
-//   <(t)line|And flaky darkness breaks within the east.|(g)>|(t)>
-// }
-// ");
-//     let mut state = State::new();
-//     let mut ans = parse_next_token(&mut input, &mut state, 5).unwrap();
-//     ans.set_span(Span::new());
-//     assert_eq!(
-//         ans,
-//         Token::CurlyTagStart(
-//             Span::new2(0, 1, 0, 0, 1, 0),
-//             "{poem".to_string(),
-//             BasicName {
-//                 view: "".to_string(),
-//                 special: false,
-//                 prefix: "".to_string(),
-//                 local: "poem".to_string()
-//             }
-//         )
-//     );
-//     let mut ans = parse_next_token(&mut input, &mut state, 5).unwrap();
-//     ans.set_span(Span::new());
-//     assert_eq!(
-//         ans,
-//         Token::TextMarker(
-//             Span::new2(0, 1, 0, 0, 1, 0),
-//             ';'
-//         )
-//     );
-//     let mut ans = parse_next_token(&mut input, &mut state, 5).unwrap();
-//     ans.set_span(Span::new());
-//     assert_eq!(
-//         ans,
-//         Token::InlineText(
-//             Span::new2(0, 1, 0, 0, 1, 0),
-//             "\n  ".to_string(),
-//             "".to_string()
-//         )
-//     );
-//     let mut ans = parse_next_token(&mut input, &mut state, 5).unwrap();
-//     ans.set_span(Span::new());
-//     assert_eq!(
-//         ans,
-//         Token::PointyTag(
-//             Span::new2(0, 1, 0, 0, 1, 0),
-//             "<(t)line|".to_string(),
-//             BasicName {
-//                 view: "t".to_string(),
-//                 special: false,
-//                 prefix: "".to_string(),
-//                 local: "line".to_string()
-//             },
-//             '<', '|'
-//         )
-//     );
-//     let mut ans = parse_next_token(&mut input, &mut state, 5).unwrap();
-//     ans.set_span(Span::new());
-//     assert_eq!(
-//         ans,
-//         Token::PointyTag(
-//             Span::new2(0, 1, 0, 0, 1, 0),
-//             "<(g)sentence|".to_string(),
-//             BasicName {
-//                 view: "g".to_string(),
-//                 special: false,
-//                 prefix: "".to_string(),
-//                 local: "sentence".to_string()
-//             },
-//             '<', '|'
-//         )
-//     );
-//     let mut ans = parse_next_token(&mut input, &mut state, 5).unwrap();
-//     ans.set_span(Span::new());
-//     assert_eq!(
-//         ans,
-//         Token::InlineText(
-//             Span::new2(0, 1, 0, 0, 1, 0),
-//             "I, by attorney, bless thee from thy mother,".to_string(),
-//             "I, by attorney, bless thee from thy mother,".to_string(),
-//         )
-//     );
-//     let mut ans = parse_next_token(&mut input, &mut state, 5).unwrap();
-//     ans.set_span(Span::new());
-//     assert_eq!(
-//         ans,
-//         Token::PointyTag(
-//             Span::new2(0, 1, 0, 0, 1, 0),
-//             "|(t)line>".to_string(),
-//             BasicName {
-//                 view: "t".to_string(),
-//                 special: false,
-//                 prefix: "".to_string(),
-//                 local: "line".to_string()
-//             },
-//             '|', '>'
-//         )
-//     );
-//     let mut ans = parse_next_token(&mut input, &mut state, 5).unwrap();
-//     ans.set_span(Span::new());
-//     assert_eq!(
-//         ans,
-//         Token::InlineText(
-//             Span::new2(0, 1, 0, 0, 1, 0),
-//             "\n  ".to_string(),
-//             "".to_string()
-//         )
-//     );
-//     let mut ans = parse_next_token(&mut input, &mut state, 5).unwrap();
-//     ans.set_span(Span::new());
-//     assert_eq!(
-//         ans,
-//         Token::PointyTag(
-//             Span::new2(0, 1, 0, 0, 1, 0),
-//             "<(t)line|".to_string(),
-//             BasicName {
-//                 view: "t".to_string(),
-//                 special: false,
-//                 prefix: "".to_string(),
-//                 local: "line".to_string()
-//             },
-//             '<', '|'
-//         )
-//     );
-// }
+#[test]
+fn parse_next_token_4() {
+    let mut input = quick_input(
+        "{poem;
+  <(t)line|<(g)sentence|I, by attorney, bless thee from thy mother,|(t)line>
+  <(t)line|Who prays continually for Richmond's good.|(g)sentence>|(t)line>
+  <(t)line|<(g)sentence|So much for that.|(g)><(g)sentence|—The silent hours steal on,|(t)>
+  <(t)line|And flaky darkness breaks within the east.|(g)>|(t)>
+}
+",
+    );
+    let mut state = State::new();
+    let mut ans = parse_next_token(&mut input, &mut state, 5).unwrap();
+    ans.set_span(Span::new());
+    assert_eq!(
+        ans,
+        Token::CurlyTagStart(
+            Span::new2(0, 1, 0, 0, 1, 0),
+            "{poem".to_string(),
+            BasicName {
+                view: "".to_string(),
+                special: false,
+                prefix: "".to_string(),
+                local: "poem".to_string()
+            }
+        )
+    );
+    let mut ans = parse_next_token(&mut input, &mut state, 5).unwrap();
+    ans.set_span(Span::new());
+    assert_eq!(ans, Token::TextMarker(Span::new2(0, 1, 0, 0, 1, 0), ';'));
+    let mut ans = parse_next_token(&mut input, &mut state, 5).unwrap();
+    ans.set_span(Span::new());
+    assert_eq!(
+        ans,
+        Token::InlineText(
+            Span::new2(0, 1, 0, 0, 1, 0),
+            "\n  ".to_string(),
+            "".to_string()
+        )
+    );
+    let mut ans = parse_next_token(&mut input, &mut state, 5).unwrap();
+    ans.set_span(Span::new());
+    assert_eq!(
+        ans,
+        Token::PointyTagHead(
+            Span::new2(0, 1, 0, 0, 1, 0),
+            "<(t)line".to_string(),
+            BasicName {
+                view: "t".to_string(),
+                special: false,
+                prefix: "".to_string(),
+                local: "line".to_string()
+            },
+        )
+    );
+    let mut ans = parse_next_token(&mut input, &mut state, 5).unwrap();
+    ans.set_span(Span::new());
+    assert_eq!(ans, Token::PointyTagTail(Span::new2(0, 1, 0, 0, 1, 0), '|'));
+    let mut ans = parse_next_token(&mut input, &mut state, 5).unwrap();
+    ans.set_span(Span::new());
+    assert_eq!(
+        ans,
+        Token::PointyTagHead(
+            Span::new2(0, 1, 0, 0, 1, 0),
+            "<(g)sentence".to_string(),
+            BasicName {
+                view: "g".to_string(),
+                special: false,
+                prefix: "".to_string(),
+                local: "sentence".to_string()
+            }
+        )
+    );
+    let mut ans = parse_next_token(&mut input, &mut state, 5).unwrap();
+    ans.set_span(Span::new());
+    assert_eq!(ans, Token::PointyTagTail(Span::new2(0, 1, 0, 0, 1, 0), '|'));
+    let mut ans = parse_next_token(&mut input, &mut state, 5).unwrap();
+    ans.set_span(Span::new());
+    assert_eq!(
+        ans,
+        Token::InlineText(
+            Span::new2(0, 1, 0, 0, 1, 0),
+            "I, by attorney, bless thee from thy mother,".to_string(),
+            "I, by attorney, bless thee from thy mother,".to_string(),
+        )
+    );
+    let mut ans = parse_next_token(&mut input, &mut state, 5).unwrap();
+    ans.set_span(Span::new());
+    assert_eq!(
+        ans,
+        Token::PointyTagHead(
+            Span::new2(0, 1, 0, 0, 1, 0),
+            "|(t)line".to_string(),
+            BasicName {
+                view: "t".to_string(),
+                special: false,
+                prefix: "".to_string(),
+                local: "line".to_string()
+            }
+        )
+    );
+    let mut ans = parse_next_token(&mut input, &mut state, 5).unwrap();
+    ans.set_span(Span::new());
+    assert_eq!(ans, Token::PointyTagTail(Span::new2(0, 1, 0, 0, 1, 0), '>'));
+    let mut ans = parse_next_token(&mut input, &mut state, 5).unwrap();
+    ans.set_span(Span::new());
+    assert_eq!(
+        ans,
+        Token::InlineText(
+            Span::new2(0, 1, 0, 0, 1, 0),
+            "\n  ".to_string(),
+            "".to_string()
+        )
+    );
+    let mut ans = parse_next_token(&mut input, &mut state, 5).unwrap();
+    ans.set_span(Span::new());
+    assert_eq!(
+        ans,
+        Token::PointyTagHead(
+            Span::new2(0, 1, 0, 0, 1, 0),
+            "<(t)line".to_string(),
+            BasicName {
+                view: "t".to_string(),
+                special: false,
+                prefix: "".to_string(),
+                local: "line".to_string()
+            }
+        )
+    );
+    let mut ans = parse_next_token(&mut input, &mut state, 5).unwrap();
+    ans.set_span(Span::new());
+    assert_eq!(ans, Token::PointyTagTail(Span::new2(0, 1, 0, 0, 1, 0), '|'));
+}

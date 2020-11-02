@@ -5,10 +5,8 @@
 
 
 use crate::hacks::is_valid_id_char;
-use crate::hacks::is_valid_id_first_char;
-use crate::hacks::is_valid_id_next_char;
 use crate::hacks::u32_to_char;
-use crate::hacks::ByteReader;
+
 use crate::peek_reader::PeekReader;
 use crate::pos::Position;
 use crate::pos::Span;
@@ -63,8 +61,8 @@ pub enum Token {
     StringValue(Span, String, String),
     CurlyTagStart(Span, String, BasicName),
     CurlyTagEnd(Span, char),
-    PointyTagStart(Span, String, BasicName),
-    PointyTagEnd(Span, char),
+    PointyTagHead(Span, String, BasicName),
+    PointyTagTail(Span, char),
 }
 
 impl Token {
@@ -91,9 +89,9 @@ impl Token {
             *span = new_span;
         } else if let Token::CurlyTagEnd(ref mut span, _) = self {
             *span = new_span;
-        } else if let Token::PointyTagStart(ref mut span, _, _) = self {
+        } else if let Token::PointyTagHead(ref mut span, _, _) = self {
             *span = new_span;
-        } else if let Token::PointyTagEnd(ref mut span, _) = self {
+        } else if let Token::PointyTagTail(ref mut span, _) = self {
             *span = new_span;
         } else {
             unreachable!();
@@ -115,8 +113,8 @@ pub enum RawToken {
     StringValue(Span, String),
     CurlyTagStart(Span, String),
     CurlyTagEnd(Span),
-    PointyTagStart(Span, String),
-    PointyTagEnd(Span, String),
+    PointyTagHead(Span, String),
+    PointyTagTail(Span, String),
 }
 
 type GotFirstLetter = bool;
@@ -139,8 +137,8 @@ enum Mode {
     StringValue,
     CurlyTagStart,
     CurlyTagEnd,
-    PointyTagStart,
-    PointyTagEnd,
+    PointyTagHead,
+    PointyTagTail,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -177,7 +175,7 @@ impl State {
 enum TagType {
     NotTag,
     CurlyTag,
-    PointyTag
+    PointyTag,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -242,7 +240,7 @@ fn next_state(src: &mut PeekReader, state: &mut State) -> Option<TokenizerError>
                     vec!['"', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'],
                 ))
             }
-        }
+        },
         ModeNew::NumericValue | ModeNew::StringValue => match pop_c {
             ';' => ModeNew::TextMarker,
             '}' | '>' | '|' => ModeNew::Tag,
@@ -254,7 +252,7 @@ fn next_state(src: &mut PeekReader, state: &mut State) -> Option<TokenizerError>
                     vec![';', '}', '|', '>', ' ', '\n', '\t'],
                 ))
             }
-        }
+        },
         _ => unreachable!(),
     };
 
@@ -450,21 +448,21 @@ fn parse_tag(src: &mut PeekReader, state: &mut State) -> Result<Token, Tokenizer
     }
     if pop_c == '>' {
         state.inside_tag = TagType::NotTag;
-        return Ok(Token::PointyTagEnd(Span::new(), src.pop()));
+        return Ok(Token::PointyTagTail(Span::new(), src.pop()));
     }
     if pop_c == '|' && state.inside_tag == TagType::PointyTag {
         state.inside_tag = TagType::NotTag;
-        return Ok(Token::PointyTagEnd(Span::new(), src.pop()));
+        return Ok(Token::PointyTagTail(Span::new(), src.pop()));
     }
     let ans_kind = match pop_c {
         '{' => Token::CurlyTagStart(Span::new(), String::new(), BasicName::new()),
         '}' => Token::CurlyTagEnd(Span::new(), '}'),
-        '<' => Token::PointyTagStart(Span::new(), String::new(), BasicName::new()),
-        '>' => Token::PointyTagEnd(Span::new(), '>'),
+        '<' => Token::PointyTagHead(Span::new(), String::new(), BasicName::new()),
+        '>' => Token::PointyTagTail(Span::new(), '>'),
         '|' => match state.inside_tag {
-            TagType::PointyTag => Token::PointyTagEnd(Span::new(), '|'),
-            _ => Token::PointyTagStart(Span::new(), String::new(), BasicName::new()),
-        }
+            TagType::PointyTag => Token::PointyTagTail(Span::new(), '|'),
+            _ => Token::PointyTagHead(Span::new(), String::new(), BasicName::new()),
+        },
         _ => {
             return Err(TokenizerError::IllegalChar2(
                 src.get_pos(),
@@ -477,7 +475,7 @@ fn parse_tag(src: &mut PeekReader, state: &mut State) -> Result<Token, Tokenizer
     let tag_type = match pop_c {
         '<' | '|' => TagType::PointyTag,
         '{' | '}' => TagType::CurlyTag,
-        _ => unreachable!()
+        _ => unreachable!(),
     };
     state.inside_tag = tag_type;
     raw_name.push(src.pop());
@@ -527,9 +525,13 @@ fn parse_tag(src: &mut PeekReader, state: &mut State) -> Result<Token, Tokenizer
     }
 
     match ans_kind {
-        Token::CurlyTagStart(_, _, _) => return Ok(Token::CurlyTagStart(Span::new(), raw_name, name)),
-        Token::PointyTagStart(_, _, _) => return Ok(Token::PointyTagStart(Span::new(), raw_name, name)),
-        Token::PointyTagEnd(_, _) => return Ok(Token::PointyTagEnd(Span::new(), open)),
+        Token::CurlyTagStart(_, _, _) => {
+            return Ok(Token::CurlyTagStart(Span::new(), raw_name, name))
+        }
+        Token::PointyTagHead(_, _, _) => {
+            return Ok(Token::PointyTagHead(Span::new(), raw_name, name))
+        }
+        Token::PointyTagTail(_, _) => return Ok(Token::PointyTagTail(Span::new(), open)),
         _ => panic!("hi"),
     }
 }
@@ -820,8 +822,8 @@ pub struct RawTokenizer {
 //                     Mode::InlineText(substate) => self.result_text(*substate),
 //                     Mode::CurlyTagStart => self.result_curly_start(),
 //                     Mode::CurlyTagEnd => self.result_curly_end(),
-//                     Mode::PointyTagStart => self.result_pointy_start(),
-//                     Mode::PointyTagEnd => self.result_pointy_end(),
+//                     Mode::PointyTagHead => self.result_pointy_start(),
+//                     Mode::PointyTagTail => self.result_pointy_end(),
 //                     Mode::StringValue => self.result_string_value(),
 //                     Mode::NumericValue => self.result_numeric_value(),
 //                     Mode::TextMarker => self.result_text_marker(c),
@@ -835,8 +837,8 @@ pub struct RawTokenizer {
 //                 Mode::InlineText(substate) => self.mode_text(c, *substate),
 //                 Mode::CurlyTagStart => self.mode_curly_start(c),
 //                 Mode::CurlyTagEnd => self.mode_curly_end(c),
-//                 Mode::PointyTagStart => self.mode_pointy_start(c),
-//                 Mode::PointyTagEnd => self.mode_pointy_end(c),
+//                 Mode::PointyTagHead => self.mode_pointy_start(c),
+//                 Mode::PointyTagTail => self.mode_pointy_end(c),
 //                 Mode::StringValue => self.mode_string_value(c),
 //                 Mode::NumericValue => self.mode_numeric_value(c),
 //                 Mode::TextMarker => self.result_text_marker(c),
@@ -854,7 +856,7 @@ pub struct RawTokenizer {
 //         if next_c == '}' && self.inside_tag == TagType::CurlyTag {
 //             self.state = Mode::CurlyTagEnd;
 //         } else if next_c == '>' && self.inside_tag == TagType::PointyTag {
-//             self.state = Mode::PointyTagEnd;
+//             self.state = Mode::PointyTagTail;
 //         } else if next_c == ';' && self.inside_tag == TagType::CurlyTag {
 //             self.state = Mode::TextMarker;
 //         } else if next_c == '|' && self.inside_tag == TagType::PointyTag {
@@ -958,7 +960,7 @@ pub struct RawTokenizer {
 //             self.repeat_c = true;
 //             self.result_attribute_name();
 //         } else if c == '>' && self.inside_tag == TagType::PointyTag {
-//             self.state = Mode::PointyTagEnd;
+//             self.state = Mode::PointyTagTail;
 //             self.repeat_c = true;
 //             self.result_attribute_name();
 //         } else if !id_char && !c.is_whitespace() {
@@ -1038,8 +1040,8 @@ pub struct RawTokenizer {
 //             match c {
 //                 '{' => self.state = Mode::CurlyTagStart,
 //                 '}' => self.state = Mode::CurlyTagEnd,
-//                 '<' => self.state = Mode::PointyTagStart,
-//                 '|' => self.state = Mode::PointyTagEnd,
+//                 '<' => self.state = Mode::PointyTagHead,
+//                 '|' => self.state = Mode::PointyTagTail,
 //                 _ => {}
 //             }
 //             self.repeat_c = true;
