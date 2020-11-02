@@ -223,7 +223,7 @@ fn next_state(src: &mut PeekReader, state: &mut State) -> Option<TokenizerError>
         ModeNew::Tag => match pop_c {
             ';' => ModeNew::TextMarker,
             '{' | '}' | '<' | '|' | '>' => ModeNew::Tag,
-            ' ' | '\n' | '\t' => match state.inside_tag {
+            pop_c if pop_c.is_whitespace() => match state.inside_tag {
                 TagType::NotTag => ModeNew::InlineText,
                 _ => ModeNew::WhitespaceAttrName,
             },
@@ -244,7 +244,7 @@ fn next_state(src: &mut PeekReader, state: &mut State) -> Option<TokenizerError>
         ModeNew::NumericValue | ModeNew::StringValue => match pop_c {
             ';' => ModeNew::TextMarker,
             '}' | '>' | '|' => ModeNew::Tag,
-            ' ' | '\n' | '\t' => ModeNew::WhitespaceAttrName,
+            pop_c if pop_c.is_whitespace() => ModeNew::WhitespaceAttrName,
             _ => {
                 return Some(TokenizerError::IllegalChar2(
                     src.get_pos(),
