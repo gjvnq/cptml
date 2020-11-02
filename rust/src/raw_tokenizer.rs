@@ -177,7 +177,7 @@ impl State {
 enum TagType {
     NotTag,
     CurlyTag,
-    PointyTag,
+    PointyTag
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -225,7 +225,10 @@ fn next_state(src: &mut PeekReader, state: &mut State) -> Option<TokenizerError>
         ModeNew::Tag => match pop_c {
             ';' => ModeNew::TextMarker,
             '{' | '}' | '<' | '|' | '>' => ModeNew::Tag,
-            ' ' | '\n' | '\t' => ModeNew::WhitespaceAttrName,
+            ' ' | '\n' | '\t' => match state.inside_tag {
+                TagType::NotTag => ModeNew::InlineText,
+                _ => ModeNew::WhitespaceAttrName,
+            },
             _ => ModeNew::InlineText,
         },
         ModeNew::WhitespaceAttrName => ModeNew::AttributeName,
@@ -242,7 +245,7 @@ fn next_state(src: &mut PeekReader, state: &mut State) -> Option<TokenizerError>
         }
         ModeNew::NumericValue | ModeNew::StringValue => match pop_c {
             ';' => ModeNew::TextMarker,
-            '}' | '|' | '>' => ModeNew::InlineText,
+            '}' | '>' | '|' => ModeNew::Tag,
             ' ' | '\n' | '\t' => ModeNew::WhitespaceAttrName,
             _ => {
                 return Some(TokenizerError::IllegalChar2(
@@ -261,7 +264,7 @@ fn next_state(src: &mut PeekReader, state: &mut State) -> Option<TokenizerError>
 fn parse_text_marker(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
     let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
 
-    if pop_c == ';' || pop_c == '|' {
+    if pop_c == ';' {
         src.pop();
         return Ok(Token::TextMarker(Span::new(), pop_c));
     } else {
@@ -441,36 +444,47 @@ fn parse_tag(src: &mut PeekReader, state: &mut State) -> Result<Token, Tokenizer
     let start_pos = src.get_pos();
     let open = pop_c;
 
+    if pop_c == '}' {
+        state.inside_tag = TagType::NotTag;
+        return Ok(Token::CurlyTagEnd(Span::new(), src.pop()));
+    }
+    if pop_c == '>' {
+        state.inside_tag = TagType::NotTag;
+        return Ok(Token::PointyTagEnd(Span::new(), src.pop()));
+    }
+    if pop_c == '|' && state.inside_tag == TagType::PointyTag {
+        state.inside_tag = TagType::NotTag;
+        return Ok(Token::PointyTagEnd(Span::new(), src.pop()));
+    }
     let ans_kind = match pop_c {
         '{' => Token::CurlyTagStart(Span::new(), String::new(), BasicName::new()),
         '}' => Token::CurlyTagEnd(Span::new(), '}'),
         '<' => Token::PointyTagStart(Span::new(), String::new(), BasicName::new()),
         '>' => Token::PointyTagEnd(Span::new(), '>'),
-        '|' => Token::PointyTagEnd(Span::new(), '|'),
+        '|' => match state.inside_tag {
+            TagType::PointyTag => Token::PointyTagEnd(Span::new(), '|'),
+            _ => Token::PointyTagStart(Span::new(), String::new(), BasicName::new()),
+        }
         _ => {
             return Err(TokenizerError::IllegalChar2(
                 src.get_pos(),
                 pop_c,
-                vec!['<', '>', '{', '}'],
+                vec!['<', '>', '{', '}', '|'],
             ))
         }
     };
-    if pop_c == '}' {
-        return Ok(Token::CurlyTagEnd(Span::new(), src.pop()));
-    }
-    if pop_c == '>' {
-        return Ok(Token::PointyTagEnd(Span::new(), src.pop()));
-    }
+
     let tag_type = match pop_c {
         '<' | '|' => TagType::PointyTag,
         '{' | '}' => TagType::CurlyTag,
         _ => unreachable!()
     };
+    state.inside_tag = tag_type;
     raw_name.push(src.pop());
 
     loop {
         let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
-        if pop_c == '\0' || pop_c == ' ' {
+        if pop_c == '\0' || pop_c.is_whitespace() {
             break;
         }
         if tag_type == TagType::CurlyTag && (pop_c == ';' || pop_c == '}') {
@@ -515,6 +529,7 @@ fn parse_tag(src: &mut PeekReader, state: &mut State) -> Result<Token, Tokenizer
     match ans_kind {
         Token::CurlyTagStart(_, _, _) => return Ok(Token::CurlyTagStart(Span::new(), raw_name, name)),
         Token::PointyTagStart(_, _, _) => return Ok(Token::PointyTagStart(Span::new(), raw_name, name)),
+        Token::PointyTagEnd(_, _) => return Ok(Token::PointyTagEnd(Span::new(), open)),
         _ => panic!("hi"),
     }
 }
@@ -769,290 +784,290 @@ pub struct RawTokenizer {
 }
 
 // TODO: untangle this mess!
-impl RawTokenizer {
-    pub fn new(reader: Box<dyn ByteReader>) -> Self {
-        RawTokenizer {
-            src: Box::new(PeekReader::new(reader)),
-            txt: "".to_string(),
-            tmp: "".to_string(),
-            state: Mode::InlineText(TextEscapeState::Normal),
-            span: Span::new(),
-            result: None,
-            done: false,
-            repeat_c: false,
-            inside_tag: TagType::NotTag,
-        }
-    }
+// impl RawTokenizer {
+//     pub fn new(reader: Box<dyn ByteReader>) -> Self {
+//         RawTokenizer {
+//             src: Box::new(PeekReader::new(reader)),
+//             txt: "".to_string(),
+//             tmp: "".to_string(),
+//             state: Mode::InlineText(TextEscapeState::Normal),
+//             span: Span::new(),
+//             result: None,
+//             done: false,
+//             repeat_c: false,
+//             inside_tag: TagType::NotTag,
+//         }
+//     }
 
-    #[allow(mutable_borrow_reservation_conflict)]
-    fn until_yield(&mut self) {
-        self.result = None;
-        if self.done {
-            return;
-        }
+//     #[allow(mutable_borrow_reservation_conflict)]
+//     fn until_yield(&mut self) {
+//         self.result = None;
+//         if self.done {
+//             return;
+//         }
 
-        self.span = Span::new_from(self.src.get_pos());
-        while self.result.is_none() {
-            let c = match self.repeat_c {
-                false => self.src.pop(),
-                true => self.src.peek(0),
-            };
-            self.repeat_c = false;
-            // Finish if EOF
-            if c == '\0' {
-                self.done = true;
-                match &self.state {
-                    Mode::InlineText(substate) => self.result_text(*substate),
-                    Mode::CurlyTagStart => self.result_curly_start(),
-                    Mode::CurlyTagEnd => self.result_curly_end(),
-                    Mode::PointyTagStart => self.result_pointy_start(),
-                    Mode::PointyTagEnd => self.result_pointy_end(),
-                    Mode::StringValue => self.result_string_value(),
-                    Mode::NumericValue => self.result_numeric_value(),
-                    Mode::TextMarker => self.result_text_marker(c),
-                    Mode::AttributeName(_) => self.result_attribute_name(),
-                    _ => panic!("unexpected state: {:?}", self.state),
-                }
-                return;
-            }
-            // Process new char
-            match &self.state {
-                Mode::InlineText(substate) => self.mode_text(c, *substate),
-                Mode::CurlyTagStart => self.mode_curly_start(c),
-                Mode::CurlyTagEnd => self.mode_curly_end(c),
-                Mode::PointyTagStart => self.mode_pointy_start(c),
-                Mode::PointyTagEnd => self.mode_pointy_end(c),
-                Mode::StringValue => self.mode_string_value(c),
-                Mode::NumericValue => self.mode_numeric_value(c),
-                Mode::TextMarker => self.result_text_marker(c),
-                Mode::AttributeName(got_first_letter) => {
-                    self.mode_attribute_name(c, *got_first_letter)
-                }
-                _ => panic!("unexpected state: {:?}", self.state),
-            }
-        }
-    }
+//         self.span = Span::new_from(self.src.get_pos());
+//         while self.result.is_none() {
+//             let c = match self.repeat_c {
+//                 false => self.src.pop(),
+//                 true => self.src.peek(0),
+//             };
+//             self.repeat_c = false;
+//             // Finish if EOF
+//             if c == '\0' {
+//                 self.done = true;
+//                 match &self.state {
+//                     Mode::InlineText(substate) => self.result_text(*substate),
+//                     Mode::CurlyTagStart => self.result_curly_start(),
+//                     Mode::CurlyTagEnd => self.result_curly_end(),
+//                     Mode::PointyTagStart => self.result_pointy_start(),
+//                     Mode::PointyTagEnd => self.result_pointy_end(),
+//                     Mode::StringValue => self.result_string_value(),
+//                     Mode::NumericValue => self.result_numeric_value(),
+//                     Mode::TextMarker => self.result_text_marker(c),
+//                     Mode::AttributeName(_) => self.result_attribute_name(),
+//                     _ => panic!("unexpected state: {:?}", self.state),
+//                 }
+//                 return;
+//             }
+//             // Process new char
+//             match &self.state {
+//                 Mode::InlineText(substate) => self.mode_text(c, *substate),
+//                 Mode::CurlyTagStart => self.mode_curly_start(c),
+//                 Mode::CurlyTagEnd => self.mode_curly_end(c),
+//                 Mode::PointyTagStart => self.mode_pointy_start(c),
+//                 Mode::PointyTagEnd => self.mode_pointy_end(c),
+//                 Mode::StringValue => self.mode_string_value(c),
+//                 Mode::NumericValue => self.mode_numeric_value(c),
+//                 Mode::TextMarker => self.result_text_marker(c),
+//                 Mode::AttributeName(got_first_letter) => {
+//                     self.mode_attribute_name(c, *got_first_letter)
+//                 }
+//                 _ => panic!("unexpected state: {:?}", self.state),
+//             }
+//         }
+//     }
 
-    fn peek_next_state_attr(&mut self, dist: isize) {
-        let next_c = self.src.peek(dist);
-        println!("peek_next_state_attr({}) {:?}", dist, next_c);
-        if next_c == '}' && self.inside_tag == TagType::CurlyTag {
-            self.state = Mode::CurlyTagEnd;
-        } else if next_c == '>' && self.inside_tag == TagType::PointyTag {
-            self.state = Mode::PointyTagEnd;
-        } else if next_c == ';' && self.inside_tag == TagType::CurlyTag {
-            self.state = Mode::TextMarker;
-        } else if next_c == '|' && self.inside_tag == TagType::PointyTag {
-            self.state = Mode::TextMarker;
-        } else if next_c == '}' || next_c == '>' || next_c == ';' || next_c == '|' {
-            let mut pos = self.src.get_pos().clone();
-            pos.step(next_c);
-            panic!("unexpected character {:?} at {:?}", next_c, pos)
-        } else {
-            self.state = Mode::AttributeName(false);
-        }
-    }
+//     fn peek_next_state_attr(&mut self, dist: isize) {
+//         let next_c = self.src.peek(dist);
+//         println!("peek_next_state_attr({}) {:?}", dist, next_c);
+//         if next_c == '}' && self.inside_tag == TagType::CurlyTag {
+//             self.state = Mode::CurlyTagEnd;
+//         } else if next_c == '>' && self.inside_tag == TagType::PointyTag {
+//             self.state = Mode::PointyTagEnd;
+//         } else if next_c == ';' && self.inside_tag == TagType::CurlyTag {
+//             self.state = Mode::TextMarker;
+//         } else if next_c == '|' && self.inside_tag == TagType::PointyTag {
+//             self.state = Mode::TextMarker;
+//         } else if next_c == '}' || next_c == '>' || next_c == ';' || next_c == '|' {
+//             let mut pos = self.src.get_pos().clone();
+//             pos.step(next_c);
+//             panic!("unexpected character {:?} at {:?}", next_c, pos)
+//         } else {
+//             self.state = Mode::AttributeName(false);
+//         }
+//     }
 
-    fn result_text_marker(&mut self, c: char) {
-        self.span.step(c);
-        self.result = Some(RawToken::TextMarker(self.span, c));
-        self.state = Mode::InlineText(TextEscapeState::Normal);
-    }
+//     fn result_text_marker(&mut self, c: char) {
+//         self.span.step(c);
+//         self.result = Some(RawToken::TextMarker(self.span, c));
+//         self.state = Mode::InlineText(TextEscapeState::Normal);
+//     }
 
-    fn result_numeric_value(&mut self) {
-        self.result = Some(RawToken::NumericValue(self.span, self.txt.clone()));
-    }
+//     fn result_numeric_value(&mut self) {
+//         self.result = Some(RawToken::NumericValue(self.span, self.txt.clone()));
+//     }
 
-    fn mode_numeric_value(&mut self, c: char) {
-        if c.is_ascii_digit() || c == '.' || c == '_' {
-            self.txt.push(c);
-            self.span.step(c);
-        } else if c.is_whitespace() {
-            self.state = Mode::AttributeName(false);
-            self.repeat_c = true;
-            self.result_numeric_value();
-        } else {
-            self.peek_next_state_attr(0);
-            self.repeat_c = true;
-            self.result_numeric_value();
-        }
-    }
+//     fn mode_numeric_value(&mut self, c: char) {
+//         if c.is_ascii_digit() || c == '.' || c == '_' {
+//             self.txt.push(c);
+//             self.span.step(c);
+//         } else if c.is_whitespace() {
+//             self.state = Mode::AttributeName(false);
+//             self.repeat_c = true;
+//             self.result_numeric_value();
+//         } else {
+//             self.peek_next_state_attr(0);
+//             self.repeat_c = true;
+//             self.result_numeric_value();
+//         }
+//     }
 
-    fn result_string_value(&mut self) {
-        self.result = Some(RawToken::StringValue(self.span, self.txt.clone()));
-    }
+//     fn result_string_value(&mut self) {
+//         self.result = Some(RawToken::StringValue(self.span, self.txt.clone()));
+//     }
 
-    fn mode_string_value(&mut self, c: char) {
-        let last_c = self.src.peek(-1);
-        self.txt.push(c);
-        self.span.step(c);
-        println!("mode_string_value: `{}`", self.txt);
+//     fn mode_string_value(&mut self, c: char) {
+//         let last_c = self.src.peek(-1);
+//         self.txt.push(c);
+//         self.span.step(c);
+//         println!("mode_string_value: `{}`", self.txt);
 
-        if c == '\"' && last_c != '\\' && self.txt.len() > 1 {
-            println!("{:?} ({:?}) {:?}", last_c, c, self.src.peek(1));
-            self.result_string_value();
-            self.peek_next_state_attr(1);
-        }
-    }
+//         if c == '\"' && last_c != '\\' && self.txt.len() > 1 {
+//             println!("{:?} ({:?}) {:?}", last_c, c, self.src.peek(1));
+//             self.result_string_value();
+//             self.peek_next_state_attr(1);
+//         }
+//     }
 
-    fn result_attribute_name(&mut self) {
-        self.result = Some(RawToken::AttributeName(self.span, self.txt.clone()));
-    }
+//     fn result_attribute_name(&mut self) {
+//         self.result = Some(RawToken::AttributeName(self.span, self.txt.clone()));
+//     }
 
-    fn mode_attribute_name(&mut self, c: char, first: bool) {
-        let mut got_first_letter = first;
+//     fn mode_attribute_name(&mut self, c: char, first: bool) {
+//         let mut got_first_letter = first;
 
-        let id_char = match got_first_letter {
-            false => is_valid_id_first_char(c),
-            true => is_valid_id_next_char(c),
-        };
-        if !got_first_letter {
-            if id_char {
-                got_first_letter = true;
-                self.state = Mode::AttributeName(got_first_letter);
-            } else if !c.is_whitespace() {
-                // attribute names can't begin with digits
-                panic!("unexpected character {:?} at {:?}", c, self.span.end);
-            }
-        }
-        if id_char || c == '=' || !got_first_letter || c == ';' {
-            self.txt.push(c);
-            self.span.step(c);
-        }
+//         let id_char = match got_first_letter {
+//             false => is_valid_id_first_char(c),
+//             true => is_valid_id_next_char(c),
+//         };
+//         if !got_first_letter {
+//             if id_char {
+//                 got_first_letter = true;
+//                 self.state = Mode::AttributeName(got_first_letter);
+//             } else if !c.is_whitespace() {
+//                 // attribute names can't begin with digits
+//                 panic!("unexpected character {:?} at {:?}", c, self.span.end);
+//             }
+//         }
+//         if id_char || c == '=' || !got_first_letter || c == ';' {
+//             self.txt.push(c);
+//             self.span.step(c);
+//         }
 
-        if c == '=' || (c.is_whitespace() && got_first_letter) {
-            self.result_attribute_name();
-            let next_c = self.src.peek(1);
-            if next_c == '\"' {
-                self.state = Mode::StringValue;
-            } else if next_c == 'f' || next_c == 't' {
-                self.state = Mode::BooleanValue;
-            } else if next_c.is_ascii_digit() || next_c == '.' {
-                self.state = Mode::NumericValue;
-            } else if c.is_whitespace() {
-                self.state = Mode::AttributeName(false);
-            } else {
-                panic!("unexpected character {:?} at {:?}", c, self.src.get_pos());
-            }
-        } else if c == ';' {
-            self.state = Mode::InlineText(TextEscapeState::Normal);
-            self.repeat_c = false;
-            self.result_attribute_name();
-        } else if c == '}' && self.inside_tag == TagType::CurlyTag {
-            self.state = Mode::CurlyTagEnd;
-            self.repeat_c = true;
-            self.result_attribute_name();
-        } else if c == '>' && self.inside_tag == TagType::PointyTag {
-            self.state = Mode::PointyTagEnd;
-            self.repeat_c = true;
-            self.result_attribute_name();
-        } else if !id_char && !c.is_whitespace() {
-            panic!("unexpected character {:?} at {:?}", c, self.span.end);
-        }
-    }
+//         if c == '=' || (c.is_whitespace() && got_first_letter) {
+//             self.result_attribute_name();
+//             let next_c = self.src.peek(1);
+//             if next_c == '\"' {
+//                 self.state = Mode::StringValue;
+//             } else if next_c == 'f' || next_c == 't' {
+//                 self.state = Mode::BooleanValue;
+//             } else if next_c.is_ascii_digit() || next_c == '.' {
+//                 self.state = Mode::NumericValue;
+//             } else if c.is_whitespace() {
+//                 self.state = Mode::AttributeName(false);
+//             } else {
+//                 panic!("unexpected character {:?} at {:?}", c, self.src.get_pos());
+//             }
+//         } else if c == ';' {
+//             self.state = Mode::InlineText(TextEscapeState::Normal);
+//             self.repeat_c = false;
+//             self.result_attribute_name();
+//         } else if c == '}' && self.inside_tag == TagType::CurlyTag {
+//             self.state = Mode::CurlyTagEnd;
+//             self.repeat_c = true;
+//             self.result_attribute_name();
+//         } else if c == '>' && self.inside_tag == TagType::PointyTag {
+//             self.state = Mode::PointyTagEnd;
+//             self.repeat_c = true;
+//             self.result_attribute_name();
+//         } else if !id_char && !c.is_whitespace() {
+//             panic!("unexpected character {:?} at {:?}", c, self.span.end);
+//         }
+//     }
 
-    fn result_pointy_end(&mut self) {}
+//     fn result_pointy_end(&mut self) {}
 
-    fn mode_pointy_end(&mut self, c: char) {}
+//     fn mode_pointy_end(&mut self, c: char) {}
 
-    fn result_pointy_start(&mut self) {}
+//     fn result_pointy_start(&mut self) {}
 
-    fn mode_pointy_start(&mut self, c: char) {}
+//     fn mode_pointy_start(&mut self, c: char) {}
 
-    fn result_curly_end(&mut self) {
-        self.result = Some(RawToken::CurlyTagEnd(self.span));
-    }
+//     fn result_curly_end(&mut self) {
+//         self.result = Some(RawToken::CurlyTagEnd(self.span));
+//     }
 
-    fn mode_curly_end(&mut self, c: char) {
-        self.span.step(c);
-        self.state = Mode::InlineText(TextEscapeState::Normal);
-        self.result_curly_end();
-        self.inside_tag = TagType::NotTag;
-    }
+//     fn mode_curly_end(&mut self, c: char) {
+//         self.span.step(c);
+//         self.state = Mode::InlineText(TextEscapeState::Normal);
+//         self.result_curly_end();
+//         self.inside_tag = TagType::NotTag;
+//     }
 
-    fn result_curly_start(&mut self) {
-        self.result = Some(RawToken::CurlyTagStart(self.span, self.txt.clone()));
-        self.inside_tag = TagType::CurlyTag;
-    }
+//     fn result_curly_start(&mut self) {
+//         self.result = Some(RawToken::CurlyTagStart(self.span, self.txt.clone()));
+//         self.inside_tag = TagType::CurlyTag;
+//     }
 
-    fn mode_curly_start(&mut self, c: char) {
-        let last_c = self.src.peek(-1);
-        if last_c.is_whitespace() && c.is_alphabetic() && self.txt.len() > 0 {
-            println!("{:?} {:?} {:?}", self.txt, last_c, c);
-            self.result_curly_start();
-            self.state = Mode::AttributeName(true);
-            self.repeat_c = true;
-            return;
-        }
-        if c != '}' {
-            self.txt.push(c);
-            self.span.step(c);
-        }
+//     fn mode_curly_start(&mut self, c: char) {
+//         let last_c = self.src.peek(-1);
+//         if last_c.is_whitespace() && c.is_alphabetic() && self.txt.len() > 0 {
+//             println!("{:?} {:?} {:?}", self.txt, last_c, c);
+//             self.result_curly_start();
+//             self.state = Mode::AttributeName(true);
+//             self.repeat_c = true;
+//             return;
+//         }
+//         if c != '}' {
+//             self.txt.push(c);
+//             self.span.step(c);
+//         }
 
-        if c == '}' || c == ';' {
-            match c {
-                '}' => self.state = Mode::CurlyTagEnd,
-                ';' => self.state = Mode::InlineText(TextEscapeState::Normal),
-                _ => {}
-            }
-            self.result_curly_start();
-        }
-        if c == '}' {
-            self.repeat_c = true;
-            return;
-        }
-    }
+//         if c == '}' || c == ';' {
+//             match c {
+//                 '}' => self.state = Mode::CurlyTagEnd,
+//                 ';' => self.state = Mode::InlineText(TextEscapeState::Normal),
+//                 _ => {}
+//             }
+//             self.result_curly_start();
+//         }
+//         if c == '}' {
+//             self.repeat_c = true;
+//             return;
+//         }
+//     }
 
-    fn result_text(&mut self, escape: TextEscapeState) {
-        if self.txt.len() > 0 {
-            self.result = Some(RawToken::InlineText(self.span, self.txt.clone()));
-        }
-    }
+//     fn result_text(&mut self, escape: TextEscapeState) {
+//         if self.txt.len() > 0 {
+//             self.result = Some(RawToken::InlineText(self.span, self.txt.clone()));
+//         }
+//     }
 
-    fn mode_text(&mut self, c: char, substate: TextEscapeState) {
-        let mut escape = substate;
+//     fn mode_text(&mut self, c: char, substate: TextEscapeState) {
+//         let mut escape = substate;
 
-        let last_c = self.src.peek(-1);
-        let next_c = self.src.peek(1);
-        let between_spaces = (next_c == ' ' || next_c == '\0') && last_c == ' ';
-        if (c == '{' || c == '}' || c == '<' || c == '|')
-            && escape == TextEscapeState::Normal
-            && !between_spaces
-        {
-            self.result_text(escape);
-            match c {
-                '{' => self.state = Mode::CurlyTagStart,
-                '}' => self.state = Mode::CurlyTagEnd,
-                '<' => self.state = Mode::PointyTagStart,
-                '|' => self.state = Mode::PointyTagEnd,
-                _ => {}
-            }
-            self.repeat_c = true;
-        } else {
-            self.txt.push(c);
-            self.span.step(c);
-            if c == '\\' && escape == TextEscapeState::Normal {
-                escape = TextEscapeState::Slash;
-            } else if escape == TextEscapeState::Slash {
-                if c == 'u' {
-                    escape = TextEscapeState::Unicode;
-                } else {
-                    escape = TextEscapeState::Normal;
-                }
-            } else if escape == TextEscapeState::Slash && c == ';' {
-                escape = TextEscapeState::Normal;
-            }
+//         let last_c = self.src.peek(-1);
+//         let next_c = self.src.peek(1);
+//         let between_spaces = (next_c == ' ' || next_c == '\0') && last_c == ' ';
+//         if (c == '{' || c == '}' || c == '<' || c == '|')
+//             && escape == TextEscapeState::Normal
+//             && !between_spaces
+//         {
+//             self.result_text(escape);
+//             match c {
+//                 '{' => self.state = Mode::CurlyTagStart,
+//                 '}' => self.state = Mode::CurlyTagEnd,
+//                 '<' => self.state = Mode::PointyTagStart,
+//                 '|' => self.state = Mode::PointyTagEnd,
+//                 _ => {}
+//             }
+//             self.repeat_c = true;
+//         } else {
+//             self.txt.push(c);
+//             self.span.step(c);
+//             if c == '\\' && escape == TextEscapeState::Normal {
+//                 escape = TextEscapeState::Slash;
+//             } else if escape == TextEscapeState::Slash {
+//                 if c == 'u' {
+//                     escape = TextEscapeState::Unicode;
+//                 } else {
+//                     escape = TextEscapeState::Normal;
+//                 }
+//             } else if escape == TextEscapeState::Slash && c == ';' {
+//                 escape = TextEscapeState::Normal;
+//             }
 
-            self.state = Mode::InlineText(escape);
-        }
-    }
-}
+//             self.state = Mode::InlineText(escape);
+//         }
+//     }
+// }
 
 impl Iterator for RawTokenizer {
     type Item = RawToken;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.until_yield();
+        // self.until_yield();
         self.txt.clear();
 
         let mut ans: Option<RawToken> = None;

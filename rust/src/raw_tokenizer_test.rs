@@ -205,7 +205,7 @@ fn parse_tag_4() {
     let ans = parse_tag(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::TextMarker(
+        Ok(Token::PointyTagEnd(
             Span::new(),
             '|'
         ))
@@ -301,13 +301,21 @@ fn parse_tag_10() {
         ans,
         Ok(Token::PointyTagStart(
             Span::new(),
-            "|(t)tei:line>".to_string(),
+            "|(t)tei:line".to_string(),
             BasicName {
                 view: "t".to_string(),
                 special: false,
                 prefix: "tei".to_string(),
                 local: "line".to_string()
             }
+        ))
+    );
+    let ans = parse_tag(&mut input, &mut state);
+    assert_eq!(
+        ans,
+        Ok(Token::PointyTagEnd(
+            Span::new(),
+            '>',
         ))
     );
 }
@@ -321,13 +329,21 @@ fn parse_tag_11() {
         ans,
         Ok(Token::PointyTagStart(
             Span::new(),
-            "|(t)>".to_string(),
+            "|(t)".to_string(),
             BasicName {
                 view: "t".to_string(),
                 special: false,
                 prefix: "".to_string(),
                 local: "".to_string()
             }
+        ))
+    );
+    let ans = parse_tag(&mut input, &mut state);
+    assert_eq!(
+        ans,
+        Ok(Token::PointyTagEnd(
+            Span::new(),
+            '>',
         ))
     );
 }
@@ -341,13 +357,21 @@ fn parse_tag_12() {
         ans,
         Ok(Token::PointyTagStart(
             Span::new(),
-            "|>".to_string(),
+            "|".to_string(),
             BasicName {
                 view: "".to_string(),
                 special: false,
                 prefix: "".to_string(),
                 local: "".to_string()
             }
+        ))
+    );
+    let ans = parse_tag(&mut input, &mut state);
+    assert_eq!(
+        ans,
+        Ok(Token::PointyTagEnd(
+            Span::new(),
+            '>',
         ))
     );
 }
@@ -718,7 +742,7 @@ fn parse_next_token_2() {
 
 #[test]
 fn parse_next_token_3() {
-    let mut input = quick_input("<emph \t\n!id=\"elem\" num=3._14|\nhi");
+    let mut input = quick_input("<emph \t\n!id=\"elem\" num=3._14|\nhi ");
     let mut state = State::new();
     let ans = parse_next_token(&mut input, &mut state, 5);
     assert_eq!(
@@ -802,7 +826,7 @@ fn parse_next_token_3() {
     let ans = parse_next_token(&mut input, &mut state, 5);
     assert_eq!(
         ans,
-        Ok(Token::TextMarker(Span::new2(28, 2, 20, 29, 2, 21), '|'))
+        Ok(Token::PointyTagEnd(Span::new2(28, 2, 20, 29, 2, 21), '|'))
     );
     let ans = parse_next_token(&mut input, &mut state, 5);
     assert_eq!(
@@ -812,11 +836,6 @@ fn parse_next_token_3() {
             "\nhi ".to_string(),
             "hi ".to_string()
         ))
-    );
-    let ans = parse_next_token(&mut input, &mut state, 5);
-    assert_eq!(
-        ans,
-        Ok(Token::CurlyTagEnd(Span::new2(33, 3, 3, 34, 3, 4), '}'))
     );
     let ans = parse_next_token(&mut input, &mut state, 5);
     assert_eq!(ans, Err(TokenizerError::EndOfInput));
