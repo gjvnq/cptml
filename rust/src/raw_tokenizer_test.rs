@@ -253,7 +253,7 @@ fn parse_tag_7() {
     let ans = parse_tag(&mut input, &mut state);
     assert_eq!(
         ans,
-        Err(TokenizerError::IllegalCharMsg(
+        Err(ParserError::IllegalCharMsg(
             Position::new2(12, 1, 12),
             ':',
             "valid id char".to_string()
@@ -268,7 +268,7 @@ fn parse_tag_8() {
     let ans = parse_tag(&mut input, &mut state);
     assert_eq!(
         ans,
-        Err(TokenizerError::MissingTerminator(
+        Err(ParserError::MissingTerminator(
             Position::new2(11, 1, 11),
             ')'
         ))
@@ -282,7 +282,7 @@ fn parse_tag_9() {
     let ans = parse_tag(&mut input, &mut state);
     assert_eq!(
         ans,
-        Err(TokenizerError::MissingLocalName(Position::new2(0, 1, 0),))
+        Err(ParserError::MissingLocalName(Position::new2(0, 1, 0),))
     );
 }
 
@@ -427,7 +427,7 @@ fn parse_attr_name_4() {
     let ans = parse_attr_name(&mut input, &mut state);
     assert_eq!(
         ans,
-        Err(TokenizerError::IllegalCharMsg(
+        Err(ParserError::IllegalCharMsg(
             Position::new2(4, 1, 4),
             '1',
             "valid id char".to_string()
@@ -532,7 +532,7 @@ fn parse_numeric_value_3() {
     let ans = parse_numeric_value(&mut input, &mut state);
     assert_eq!(
         ans,
-        Err(TokenizerError::IllegalNumber(
+        Err(ParserError::IllegalNumber(
             Span::new2(0, 1, 0, 1, 1, 1),
             "_".to_string()
         ))
@@ -652,7 +652,7 @@ fn parse_next_token_1() {
         Ok(RawToken::CurlyTagEnd(Span::new2(10, 2, 3, 11, 2, 4), '}'))
     );
     let ans = parse_next_token(&mut input, &mut state);
-    assert_eq!(ans, Err(TokenizerError::EndOfInput));
+    assert_eq!(ans, Err(ParserError::EndOfInput));
 }
 
 #[test]
@@ -758,7 +758,7 @@ fn parse_next_token_2() {
         Ok(RawToken::CurlyTagEnd(Span::new2(33, 3, 3, 34, 3, 4), '}'))
     );
     let ans = parse_next_token(&mut input, &mut state);
-    assert_eq!(ans, Err(TokenizerError::EndOfInput));
+    assert_eq!(ans, Err(ParserError::EndOfInput));
 }
 
 #[test]
@@ -859,7 +859,7 @@ fn parse_next_token_3() {
         ))
     );
     let ans = parse_next_token(&mut input, &mut state);
-    assert_eq!(ans, Err(TokenizerError::EndOfInput));
+    assert_eq!(ans, Err(ParserError::EndOfInput));
 }
 
 #[test]

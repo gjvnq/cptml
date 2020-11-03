@@ -3,6 +3,7 @@
 use crate::hacks::is_valid_id_char;
 use crate::hacks::u32_to_char;
 
+use crate::errors::ParserError;
 use crate::peek_reader::PeekReader;
 use crate::pos::Position;
 use crate::pos::Span;
@@ -144,21 +145,9 @@ enum WhitesapeMode {
     GotFirst,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TokenizerError {
-    IllegalChar(Position, char),
-    IllegalChar2(Position, char, Vec<char>),
-    IllegalCharMsg(Position, char, String),
-    MissingTerminator(Position, char),
-    MissingLocalName(Position),
-    IllegalEscapeSequence(Position, String),
-    IllegalNumber(Span, String),
-    EndOfInput,
-}
-
 const LIMIT_RETRYS: i32 = 10;
 
-fn next_state(src: &mut PeekReader, state: &mut State) -> Option<TokenizerError> {
+fn next_state(src: &mut PeekReader, state: &mut State) -> Option<ParserError> {
     let (pop_c, next_three) = (src.peek(1), src.peek_string(1, 3));
     let mut i = 0;
 
@@ -191,7 +180,7 @@ fn next_state(src: &mut PeekReader, state: &mut State) -> Option<TokenizerError>
                 '0'..='9' => Mode::NumericValue,
                 '"' => Mode::StringValue,
                 _ => {
-                    return Some(TokenizerError::IllegalChar2(
+                    return Some(ParserError::IllegalChar2(
                         src.get_pos(),
                         pop_c,
                         vec!['"', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'],
@@ -203,7 +192,7 @@ fn next_state(src: &mut PeekReader, state: &mut State) -> Option<TokenizerError>
                 '}' | '>' | '|' => Mode::Tag,
                 pop_c if pop_c.is_whitespace() => Mode::WhitespaceAttrName,
                 _ => {
-                    return Some(TokenizerError::IllegalChar2(
+                    return Some(ParserError::IllegalChar2(
                         src.get_pos(),
                         pop_c,
                         vec![';', '}', '|', '>', ' ', '\n', '\t'],
@@ -221,7 +210,7 @@ fn next_state(src: &mut PeekReader, state: &mut State) -> Option<TokenizerError>
     return None;
 }
 
-fn parse_code_block(src: &mut PeekReader, state: &mut State) -> Result<RawToken, TokenizerError> {
+fn parse_code_block(src: &mut PeekReader, state: &mut State) -> Result<RawToken, ParserError> {
     state.mode = Mode::CodeBlock;
     let mut start_num = 0;
     let mut finished_start = false;
@@ -268,7 +257,7 @@ fn parse_code_block(src: &mut PeekReader, state: &mut State) -> Result<RawToken,
     Ok(RawToken::CodeBlock(Span::new(), raw, val))
 }
 
-fn parse_text_marker(src: &mut PeekReader, state: &mut State) -> Result<RawToken, TokenizerError> {
+fn parse_text_marker(src: &mut PeekReader, state: &mut State) -> Result<RawToken, ParserError> {
     state.mode = Mode::TextMarker;
     let pop_c = src.peek(1);
 
@@ -276,7 +265,7 @@ fn parse_text_marker(src: &mut PeekReader, state: &mut State) -> Result<RawToken
         src.pop();
         return Ok(RawToken::TextMarker(Span::new(), pop_c));
     } else {
-        return Err(TokenizerError::IllegalChar2(
+        return Err(ParserError::IllegalChar2(
             src.get_pos(),
             pop_c,
             vec![';'],
@@ -284,7 +273,7 @@ fn parse_text_marker(src: &mut PeekReader, state: &mut State) -> Result<RawToken
     }
 }
 
-fn parse_math(src: &mut PeekReader, state: &mut State) -> Result<RawToken, TokenizerError> {
+fn parse_math(src: &mut PeekReader, state: &mut State) -> Result<RawToken, ParserError> {
     state.mode = Mode::Math;
     let (pop_c, next_c) = (src.peek(1), src.peek(2));
     let mut raw = String::new();
@@ -296,7 +285,7 @@ fn parse_math(src: &mut PeekReader, state: &mut State) -> Result<RawToken, Token
     } else if pop_c == '$' {
         raw.push(src.pop());
     } else {
-        return Err(TokenizerError::IllegalChar2(
+        return Err(ParserError::IllegalChar2(
             src.get_pos(),
             pop_c,
             vec!['$'],
@@ -325,7 +314,7 @@ fn parse_math(src: &mut PeekReader, state: &mut State) -> Result<RawToken, Token
     }
 }
 
-fn parse_whitespace(src: &mut PeekReader, state: &mut State) -> Result<RawToken, TokenizerError> {
+fn parse_whitespace(src: &mut PeekReader, state: &mut State) -> Result<RawToken, ParserError> {
     state.mode = Mode::WhitespaceAttrName;
     let mut ans = String::new();
     let mut has_break = false;
@@ -349,7 +338,7 @@ fn parse_whitespace(src: &mut PeekReader, state: &mut State) -> Result<RawToken,
     return Ok(RawToken::Whitespace(Span::new(), ans, val));
 }
 
-fn parse_inline_text(src: &mut PeekReader, state: &mut State) -> Result<RawToken, TokenizerError> {
+fn parse_inline_text(src: &mut PeekReader, state: &mut State) -> Result<RawToken, ParserError> {
     state.mode = Mode::InlineText;
     let mut text_escape = TextEscapeState::Normal;
     let mut ans_raw = String::new();
@@ -428,7 +417,7 @@ fn parse_inline_text(src: &mut PeekReader, state: &mut State) -> Result<RawToken
             };
             if real_c == '\0' {
                 let s_err = format!("\\{}", next_c);
-                return Err(TokenizerError::IllegalEscapeSequence(src.get_pos(), s_err));
+                return Err(ParserError::IllegalEscapeSequence(src.get_pos(), s_err));
             } else {
                 ans_parsed.push(real_c);
                 src.pop();
@@ -443,9 +432,9 @@ fn parse_inline_text(src: &mut PeekReader, state: &mut State) -> Result<RawToken
             fn ret_uni_err(
                 src: &PeekReader,
                 buf_unicode: &String,
-            ) -> Result<RawToken, TokenizerError> {
+            ) -> Result<RawToken, ParserError> {
                 let s_err = "\\u".to_string() + &buf_unicode;
-                return Err(TokenizerError::IllegalEscapeSequence(src.get_pos(), s_err));
+                return Err(ParserError::IllegalEscapeSequence(src.get_pos(), s_err));
             }
 
             if buf_unicode.len() == 0 && pop_c == 'u' {
@@ -482,7 +471,7 @@ fn parse_inline_text(src: &mut PeekReader, state: &mut State) -> Result<RawToken
     return Ok(RawToken::InlineText(Span::new(), ans_raw, ans_parsed));
 }
 
-fn parse_tag(src: &mut PeekReader, state: &mut State) -> Result<RawToken, TokenizerError> {
+fn parse_tag(src: &mut PeekReader, state: &mut State) -> Result<RawToken, ParserError> {
     state.mode = Mode::Tag;
 
     let pop_c = src.peek(1);
@@ -515,7 +504,7 @@ fn parse_tag(src: &mut PeekReader, state: &mut State) -> Result<RawToken, Tokeni
             _ => RawToken::PointyTagHead(Span::new(), String::new(), BasicName::new()),
         },
         _ => {
-            return Err(TokenizerError::IllegalChar2(
+            return Err(ParserError::IllegalChar2(
                 src.get_pos(),
                 pop_c,
                 vec!['<', '>', '{', '}', '|'],
@@ -557,7 +546,7 @@ fn parse_tag(src: &mut PeekReader, state: &mut State) -> Result<RawToken, Tokeni
             name.local.clear();
             has_view = false;
         } else {
-            return Err(TokenizerError::IllegalCharMsg(
+            return Err(ParserError::IllegalCharMsg(
                 src.get_pos(),
                 pop_c,
                 "valid id char".to_string(),
@@ -569,10 +558,10 @@ fn parse_tag(src: &mut PeekReader, state: &mut State) -> Result<RawToken, Tokeni
     }
 
     if has_view {
-        return Err(TokenizerError::MissingTerminator(src.get_pos(), ')'));
+        return Err(ParserError::MissingTerminator(src.get_pos(), ')'));
     }
     if name.local.len() == 0 && !(tag_type == TagType::PointyTag && open == '|') {
-        return Err(TokenizerError::MissingLocalName(start_pos));
+        return Err(ParserError::MissingLocalName(start_pos));
     }
 
     match ans_kind {
@@ -587,7 +576,7 @@ fn parse_tag(src: &mut PeekReader, state: &mut State) -> Result<RawToken, Tokeni
     }
 }
 
-fn parse_attr_name(src: &mut PeekReader, state: &mut State) -> Result<RawToken, TokenizerError> {
+fn parse_attr_name(src: &mut PeekReader, state: &mut State) -> Result<RawToken, ParserError> {
     state.mode = Mode::AttributeName;
 
     let mut name = BasicName::new();
@@ -610,7 +599,7 @@ fn parse_attr_name(src: &mut PeekReader, state: &mut State) -> Result<RawToken, 
             name.prefix = name.local.clone();
             name.local.clear();
         } else {
-            return Err(TokenizerError::IllegalCharMsg(
+            return Err(ParserError::IllegalCharMsg(
                 src.get_pos(),
                 pop_c,
                 "valid id char".to_string(),
@@ -621,13 +610,13 @@ fn parse_attr_name(src: &mut PeekReader, state: &mut State) -> Result<RawToken, 
         raw_name.push(src.pop());
     }
     if name.local.len() == 0 {
-        return Err(TokenizerError::MissingLocalName(start_pos));
+        return Err(ParserError::MissingLocalName(start_pos));
     }
 
     return Ok(RawToken::AttributeName(Span::new(), raw_name, name));
 }
 
-fn parse_string_value(src: &mut PeekReader, state: &mut State) -> Result<RawToken, TokenizerError> {
+fn parse_string_value(src: &mut PeekReader, state: &mut State) -> Result<RawToken, ParserError> {
     state.mode = Mode::StringValue;
 
     let pop_c = src.peek(1);
@@ -638,7 +627,7 @@ fn parse_string_value(src: &mut PeekReader, state: &mut State) -> Result<RawToke
 
     // Check start char
     if pop_c != '"' {
-        return Err(TokenizerError::IllegalChar2(
+        return Err(ParserError::IllegalChar2(
             src.get_pos(),
             pop_c,
             vec!['"'],
@@ -650,7 +639,7 @@ fn parse_string_value(src: &mut PeekReader, state: &mut State) -> Result<RawToke
         let (pop_c, next_c) = (src.peek(1), src.peek(2));
         println!("pop_c={:?} mode={:?}", pop_c, mode);
         if pop_c == '\0' {
-            return Err(TokenizerError::IllegalChar2(
+            return Err(ParserError::IllegalChar2(
                 src.get_pos(),
                 pop_c,
                 vec!['"'],
@@ -683,7 +672,7 @@ fn parse_string_value(src: &mut PeekReader, state: &mut State) -> Result<RawToke
             };
             if real_c == '\0' {
                 let s_err = format!("\\{}", next_c);
-                return Err(TokenizerError::IllegalEscapeSequence(src.get_pos(), s_err));
+                return Err(ParserError::IllegalEscapeSequence(src.get_pos(), s_err));
             } else {
                 val.push(real_c);
                 mode = TextEscapeState::Normal;
@@ -692,9 +681,9 @@ fn parse_string_value(src: &mut PeekReader, state: &mut State) -> Result<RawToke
             fn ret_uni_err(
                 src: &PeekReader,
                 buf_unicode: &String,
-            ) -> Result<RawToken, TokenizerError> {
+            ) -> Result<RawToken, ParserError> {
                 let s_err = "\\u".to_string() + &buf_unicode;
-                return Err(TokenizerError::IllegalEscapeSequence(src.get_pos(), s_err));
+                return Err(ParserError::IllegalEscapeSequence(src.get_pos(), s_err));
             }
 
             if buf_unicode.len() == 0 && pop_c == 'u' {
@@ -727,7 +716,7 @@ fn parse_string_value(src: &mut PeekReader, state: &mut State) -> Result<RawToke
     return Ok(RawToken::StringValue(Span::new(), raw_val, val));
 }
 
-fn parse_numeric_value(src: &mut PeekReader, state: &mut State) -> Result<RawToken, TokenizerError> {
+fn parse_numeric_value(src: &mut PeekReader, state: &mut State) -> Result<RawToken, ParserError> {
     state.mode = Mode::NumericValue;
 
     let mut buf = "".to_string();
@@ -748,7 +737,7 @@ fn parse_numeric_value(src: &mut PeekReader, state: &mut State) -> Result<RawTok
             dot = true;
             buf.push('.');
         } else {
-            return Err(TokenizerError::IllegalCharMsg(
+            return Err(ParserError::IllegalCharMsg(
                 src.get_pos(),
                 pop_c,
                 "ASCII digit".to_string(),
@@ -762,17 +751,17 @@ fn parse_numeric_value(src: &mut PeekReader, state: &mut State) -> Result<RawTok
     if dot {
         match buf.parse::<f64>() {
             Ok(v) => return Ok(RawToken::NumericValue(Span::new(), raw, Number::Float(v))),
-            _ => return Err(TokenizerError::IllegalNumber(span, raw)),
+            _ => return Err(ParserError::IllegalNumber(span, raw)),
         };
     } else {
         match buf.parse::<i64>() {
             Ok(v) => return Ok(RawToken::NumericValue(Span::new(), raw, Number::Integer(v))),
-            _ => return Err(TokenizerError::IllegalNumber(span, raw)),
+            _ => return Err(ParserError::IllegalNumber(span, raw)),
         };
     }
 }
 
-fn parse_next_token(src: &mut PeekReader, state: &mut State) -> Result<RawToken, TokenizerError> {
+fn parse_next_token(src: &mut PeekReader, state: &mut State) -> Result<RawToken, ParserError> {
     let mut i = 0;
     loop {
         if i >= LIMIT_RETRYS {
@@ -781,7 +770,7 @@ fn parse_next_token(src: &mut PeekReader, state: &mut State) -> Result<RawToken,
         i += 1;
 
         if src.peek(1) == '\0' {
-            return Err(TokenizerError::EndOfInput);
+            return Err(ParserError::EndOfInput);
         }
 
         let mut span = Span::new();
@@ -832,7 +821,7 @@ impl RawTokenizer {
             state: State::new(),
         }
     }
-    pub fn next(&mut self) -> Result<RawToken, TokenizerError> {
+    pub fn next(&mut self) -> Result<RawToken, ParserError> {
         parse_next_token(&mut self.src, &mut self.state)
     }
 }
