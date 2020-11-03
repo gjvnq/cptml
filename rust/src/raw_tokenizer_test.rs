@@ -11,7 +11,7 @@ fn parse_inline_text_1a() {
     let ans = parse_inline_text(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::InlineText(
+        Ok(RawToken::InlineText(
             Span::new(),
             "".to_string(),
             "".to_string()
@@ -26,7 +26,7 @@ fn parse_inline_text_1b() {
     let ans = parse_inline_text(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::InlineText(
+        Ok(RawToken::InlineText(
             Span::new(),
             "     \n".to_string(),
             "".to_string()
@@ -41,7 +41,7 @@ fn parse_inline_text_2a() {
     let ans = parse_inline_text(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::InlineText(
+        Ok(RawToken::InlineText(
             Span::new(),
             " a bc  ".to_string(),
             " a bc  ".to_string()
@@ -56,7 +56,7 @@ fn parse_inline_text_2b() {
     let ans = parse_inline_text(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::InlineText(
+        Ok(RawToken::InlineText(
             Span::new(),
             "\n a bc  \n".to_string(),
             "a bc\n".to_string()
@@ -71,7 +71,7 @@ fn parse_inline_text_3() {
     let ans = parse_inline_text(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::InlineText(
+        Ok(RawToken::InlineText(
             Span::new(),
             "\n \ta bc  \n\t z ".to_string(),
             "a bc\nz ".to_string()
@@ -86,7 +86,7 @@ fn parse_inline_text_4() {
     let ans = parse_inline_text(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::InlineText(
+        Ok(RawToken::InlineText(
             Span::new(),
             "\n   \\t   \\n\\u1F4DA;\\t".to_string(),
             "\t   \n📚\t".to_string()
@@ -101,7 +101,7 @@ fn parse_inline_text_5() {
     let ans = parse_inline_text(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::InlineText(
+        Ok(RawToken::InlineText(
             Span::new(),
             "\n a { < | } > bc  \n".to_string(),
             "a { < | } > bc\n".to_string()
@@ -116,7 +116,7 @@ fn parse_inline_text_6() {
     let ans = parse_inline_text(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::InlineText(
+        Ok(RawToken::InlineText(
             Span::new(),
             "\n a ".to_string(),
             "a ".to_string()
@@ -131,7 +131,7 @@ fn parse_tag_1() {
     let ans = parse_tag(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::CurlyTagStart(
+        Ok(RawToken::CurlyTagStart(
             Span::new(),
             "{icon".to_string(),
             BasicName {
@@ -151,7 +151,7 @@ fn parse_tag_2() {
     let ans = parse_tag(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::CurlyTagStart(
+        Ok(RawToken::CurlyTagStart(
             Span::new(),
             "{icon".to_string(),
             BasicName {
@@ -171,7 +171,7 @@ fn parse_tag_3() {
     let ans = parse_tag(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::CurlyTagStart(
+        Ok(RawToken::CurlyTagStart(
             Span::new(),
             "{!icon".to_string(),
             BasicName {
@@ -191,7 +191,7 @@ fn parse_tag_4() {
     let ans = parse_tag(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::PointyTagHead(
+        Ok(RawToken::PointyTagHead(
             Span::new(),
             "<ns:icon".to_string(),
             BasicName {
@@ -203,7 +203,7 @@ fn parse_tag_4() {
         ))
     );
     let ans = parse_tag(&mut input, &mut state);
-    assert_eq!(ans, Ok(Token::PointyTagTail(Span::new(), '|')));
+    assert_eq!(ans, Ok(RawToken::PointyTagTail(Span::new(), '|')));
 }
 
 #[test]
@@ -213,7 +213,7 @@ fn parse_tag_5() {
     let ans = parse_tag(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::PointyTagHead(
+        Ok(RawToken::PointyTagHead(
             Span::new(),
             "<!ns:icon".to_string(),
             BasicName {
@@ -233,7 +233,7 @@ fn parse_tag_6() {
     let ans = parse_tag(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::PointyTagHead(
+        Ok(RawToken::PointyTagHead(
             Span::new(),
             "<(t)tei:line".to_string(),
             BasicName {
@@ -293,7 +293,7 @@ fn parse_tag_10() {
     let ans = parse_tag(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::PointyTagHead(
+        Ok(RawToken::PointyTagHead(
             Span::new(),
             "|(t)tei:line".to_string(),
             BasicName {
@@ -305,7 +305,7 @@ fn parse_tag_10() {
         ))
     );
     let ans = parse_tag(&mut input, &mut state);
-    assert_eq!(ans, Ok(Token::PointyTagTail(Span::new(), '>',)));
+    assert_eq!(ans, Ok(RawToken::PointyTagTail(Span::new(), '>',)));
 }
 
 #[test]
@@ -315,7 +315,7 @@ fn parse_tag_11() {
     let ans = parse_tag(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::PointyTagHead(
+        Ok(RawToken::PointyTagHead(
             Span::new(),
             "|(t)".to_string(),
             BasicName {
@@ -327,7 +327,7 @@ fn parse_tag_11() {
         ))
     );
     let ans = parse_tag(&mut input, &mut state);
-    assert_eq!(ans, Ok(Token::PointyTagTail(Span::new(), '>',)));
+    assert_eq!(ans, Ok(RawToken::PointyTagTail(Span::new(), '>',)));
 }
 
 #[test]
@@ -337,7 +337,7 @@ fn parse_tag_12() {
     let ans = parse_tag(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::PointyTagHead(
+        Ok(RawToken::PointyTagHead(
             Span::new(),
             "|".to_string(),
             BasicName {
@@ -349,7 +349,7 @@ fn parse_tag_12() {
         ))
     );
     let ans = parse_tag(&mut input, &mut state);
-    assert_eq!(ans, Ok(Token::PointyTagTail(Span::new(), '>',)));
+    assert_eq!(ans, Ok(RawToken::PointyTagTail(Span::new(), '>',)));
 }
 
 #[test]
@@ -357,7 +357,7 @@ fn parse_tag_13() {
     let mut input = quick_input("}");
     let mut state = State::new();
     let ans = parse_tag(&mut input, &mut state);
-    assert_eq!(ans, Ok(Token::CurlyTagEnd(Span::new(), '}')));
+    assert_eq!(ans, Ok(RawToken::CurlyTagEnd(Span::new(), '}')));
 }
 
 #[test]
@@ -367,7 +367,7 @@ fn parse_attr_name_1() {
     let ans = parse_attr_name(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::AttributeName(
+        Ok(RawToken::AttributeName(
             Span::new(),
             "attr=".to_string(),
             BasicName {
@@ -387,7 +387,7 @@ fn parse_attr_name_2() {
     let ans = parse_attr_name(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::AttributeName(
+        Ok(RawToken::AttributeName(
             Span::new(),
             "!id=".to_string(),
             BasicName {
@@ -407,7 +407,7 @@ fn parse_attr_name_3() {
     let ans = parse_attr_name(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::AttributeName(
+        Ok(RawToken::AttributeName(
             Span::new(),
             "ns1:attr_val=".to_string(),
             BasicName {
@@ -442,7 +442,7 @@ fn parse_string_value_1() {
     let ans = parse_string_value(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::StringValue(
+        Ok(RawToken::StringValue(
             Span::new(),
             "\"\"".to_string(),
             "".to_string()
@@ -457,7 +457,7 @@ fn parse_string_value_2() {
     let ans = parse_string_value(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::StringValue(
+        Ok(RawToken::StringValue(
             Span::new(),
             "\"abc\"".to_string(),
             "abc".to_string()
@@ -472,7 +472,7 @@ fn parse_string_value_3() {
     let ans = parse_string_value(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::StringValue(
+        Ok(RawToken::StringValue(
             Span::new(),
             "\"\\\"\"".to_string(),
             "\"".to_string()
@@ -487,7 +487,7 @@ fn parse_string_value_4() {
     let ans = parse_string_value(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::StringValue(
+        Ok(RawToken::StringValue(
             Span::new(),
             "\"\\u222B;\"".to_string(),
             "∫".to_string()
@@ -502,7 +502,7 @@ fn parse_numeric_value_1() {
     let ans = parse_numeric_value(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::NumericValue(
+        Ok(RawToken::NumericValue(
             Span::new(),
             "1_000".to_string(),
             Number::Integer(1000)
@@ -517,7 +517,7 @@ fn parse_numeric_value_2() {
     let ans = parse_numeric_value(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::NumericValue(
+        Ok(RawToken::NumericValue(
             Span::new(),
             "1_000.3__4".to_string(),
             Number::Float(1000.34)
@@ -546,7 +546,7 @@ fn parse_code_block_1() {
     let ans = parse_code_block(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::CodeBlock(
+        Ok(RawToken::CodeBlock(
             Span::new2(0, 1, 0, 0, 1, 0),
             "```` qdasd sd{dsads} ``````` fd53<4|````".to_string(),
             " qdasd sd{dsads} ``````` fd53<4|".to_string(),
@@ -561,7 +561,7 @@ fn parse_whitespace_1() {
     let ans = parse_whitespace(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::Whitespace(
+        Ok(RawToken::Whitespace(
             Span::new(),
             "   ".to_string(),
             " ".to_string()
@@ -576,7 +576,7 @@ fn parse_whitespace_2() {
     let ans = parse_whitespace(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::Whitespace(
+        Ok(RawToken::Whitespace(
             Span::new(),
             " \n  ".to_string(),
             "".to_string()
@@ -591,7 +591,7 @@ fn parse_math_1() {
     let ans = parse_math(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::InlineMathText(
+        Ok(RawToken::InlineMathText(
             Span::new2(0, 1, 0, 0, 1, 0),
             "$ \\frac12$".to_string(),
             " \\frac12".to_string()
@@ -606,7 +606,7 @@ fn parse_math_2() {
     let ans = parse_math(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::DisplayMathText(
+        Ok(RawToken::DisplayMathText(
             Span::new2(0, 1, 0, 0, 1, 0),
             "$$ \\frac12$ \\int{\\sigma}$$".to_string(),
             " \\frac12$ \\int{\\sigma}".to_string()
@@ -621,7 +621,7 @@ fn parse_next_token_1() {
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::CurlyTagStart(
+        Ok(RawToken::CurlyTagStart(
             Span::new2(0, 1, 0, 5, 1, 5),
             "{emph".to_string(),
             BasicName {
@@ -635,12 +635,12 @@ fn parse_next_token_1() {
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::TextMarker(Span::new2(5, 1, 5, 6, 1, 6), ';'))
+        Ok(RawToken::TextMarker(Span::new2(5, 1, 5, 6, 1, 6), ';'))
     );
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::InlineText(
+        Ok(RawToken::InlineText(
             Span::new2(6, 1, 6, 10, 2, 3),
             "\nhi ".to_string(),
             "hi ".to_string()
@@ -649,7 +649,7 @@ fn parse_next_token_1() {
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::CurlyTagEnd(Span::new2(10, 2, 3, 11, 2, 4), '}'))
+        Ok(RawToken::CurlyTagEnd(Span::new2(10, 2, 3, 11, 2, 4), '}'))
     );
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(ans, Err(TokenizerError::EndOfInput));
@@ -662,7 +662,7 @@ fn parse_next_token_2() {
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::CurlyTagStart(
+        Ok(RawToken::CurlyTagStart(
             Span::new2(0, 1, 0, 5, 1, 5),
             "{emph".to_string(),
             BasicName {
@@ -676,7 +676,7 @@ fn parse_next_token_2() {
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::Whitespace(
+        Ok(RawToken::Whitespace(
             Span::new2(5, 1, 5, 8, 2, 0),
             " \t\n".to_string(),
             "".to_string()
@@ -685,7 +685,7 @@ fn parse_next_token_2() {
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::AttributeName(
+        Ok(RawToken::AttributeName(
             Span::new2(8, 2, 0, 12, 2, 4),
             "!id=".to_string(),
             BasicName {
@@ -699,7 +699,7 @@ fn parse_next_token_2() {
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::StringValue(
+        Ok(RawToken::StringValue(
             Span::new2(12, 2, 4, 18, 2, 10),
             "\"elem\"".to_string(),
             "elem".to_string(),
@@ -708,7 +708,7 @@ fn parse_next_token_2() {
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::Whitespace(
+        Ok(RawToken::Whitespace(
             Span::new2(18, 2, 10, 19, 2, 11),
             " ".to_string(),
             " ".to_string()
@@ -717,7 +717,7 @@ fn parse_next_token_2() {
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::AttributeName(
+        Ok(RawToken::AttributeName(
             Span::new2(19, 2, 11, 23, 2, 15),
             "num=".to_string(),
             BasicName {
@@ -731,7 +731,7 @@ fn parse_next_token_2() {
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::NumericValue(
+        Ok(RawToken::NumericValue(
             Span::new2(23, 2, 15, 28, 2, 20),
             "3._14".to_string(),
             Number::Float(3.14)
@@ -741,12 +741,12 @@ fn parse_next_token_2() {
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::TextMarker(Span::new2(28, 2, 20, 29, 2, 21), ';'))
+        Ok(RawToken::TextMarker(Span::new2(28, 2, 20, 29, 2, 21), ';'))
     );
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::InlineText(
+        Ok(RawToken::InlineText(
             Span::new2(29, 2, 21, 33, 3, 3),
             "\nhi ".to_string(),
             "hi ".to_string()
@@ -755,7 +755,7 @@ fn parse_next_token_2() {
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::CurlyTagEnd(Span::new2(33, 3, 3, 34, 3, 4), '}'))
+        Ok(RawToken::CurlyTagEnd(Span::new2(33, 3, 3, 34, 3, 4), '}'))
     );
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(ans, Err(TokenizerError::EndOfInput));
@@ -768,7 +768,7 @@ fn parse_next_token_3() {
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::PointyTagHead(
+        Ok(RawToken::PointyTagHead(
             Span::new2(0, 1, 0, 5, 1, 5),
             "<emph".to_string(),
             BasicName {
@@ -782,7 +782,7 @@ fn parse_next_token_3() {
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::Whitespace(
+        Ok(RawToken::Whitespace(
             Span::new2(5, 1, 5, 8, 2, 0),
             " \t\n".to_string(),
             "".to_string()
@@ -791,7 +791,7 @@ fn parse_next_token_3() {
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::AttributeName(
+        Ok(RawToken::AttributeName(
             Span::new2(8, 2, 0, 12, 2, 4),
             "!id=".to_string(),
             BasicName {
@@ -805,7 +805,7 @@ fn parse_next_token_3() {
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::StringValue(
+        Ok(RawToken::StringValue(
             Span::new2(12, 2, 4, 18, 2, 10),
             "\"elem\"".to_string(),
             "elem".to_string(),
@@ -814,7 +814,7 @@ fn parse_next_token_3() {
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::Whitespace(
+        Ok(RawToken::Whitespace(
             Span::new2(18, 2, 10, 19, 2, 11),
             " ".to_string(),
             " ".to_string()
@@ -823,7 +823,7 @@ fn parse_next_token_3() {
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::AttributeName(
+        Ok(RawToken::AttributeName(
             Span::new2(19, 2, 11, 23, 2, 15),
             "num=".to_string(),
             BasicName {
@@ -837,7 +837,7 @@ fn parse_next_token_3() {
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::NumericValue(
+        Ok(RawToken::NumericValue(
             Span::new2(23, 2, 15, 28, 2, 20),
             "3._14".to_string(),
             Number::Float(3.14)
@@ -847,12 +847,12 @@ fn parse_next_token_3() {
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::PointyTagTail(Span::new2(28, 2, 20, 29, 2, 21), '|'))
+        Ok(RawToken::PointyTagTail(Span::new2(28, 2, 20, 29, 2, 21), '|'))
     );
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(Token::InlineText(
+        Ok(RawToken::InlineText(
             Span::new2(29, 2, 21, 33, 3, 3),
             "\nhi ".to_string(),
             "hi ".to_string()
@@ -878,7 +878,7 @@ fn parse_next_token_4() {
     ans.set_span(Span::new());
     assert_eq!(
         ans,
-        Token::CurlyTagStart(
+        RawToken::CurlyTagStart(
             Span::new2(0, 1, 0, 0, 1, 0),
             "{poem".to_string(),
             BasicName {
@@ -891,12 +891,12 @@ fn parse_next_token_4() {
     );
     let mut ans = parse_next_token(&mut input, &mut state).unwrap();
     ans.set_span(Span::new());
-    assert_eq!(ans, Token::TextMarker(Span::new2(0, 1, 0, 0, 1, 0), ';'));
+    assert_eq!(ans, RawToken::TextMarker(Span::new2(0, 1, 0, 0, 1, 0), ';'));
     let mut ans = parse_next_token(&mut input, &mut state).unwrap();
     ans.set_span(Span::new());
     assert_eq!(
         ans,
-        Token::InlineText(
+        RawToken::InlineText(
             Span::new2(0, 1, 0, 0, 1, 0),
             "\n  ".to_string(),
             "".to_string()
@@ -906,7 +906,7 @@ fn parse_next_token_4() {
     ans.set_span(Span::new());
     assert_eq!(
         ans,
-        Token::PointyTagHead(
+        RawToken::PointyTagHead(
             Span::new2(0, 1, 0, 0, 1, 0),
             "<(t)line".to_string(),
             BasicName {
@@ -919,12 +919,12 @@ fn parse_next_token_4() {
     );
     let mut ans = parse_next_token(&mut input, &mut state).unwrap();
     ans.set_span(Span::new());
-    assert_eq!(ans, Token::PointyTagTail(Span::new2(0, 1, 0, 0, 1, 0), '|'));
+    assert_eq!(ans, RawToken::PointyTagTail(Span::new2(0, 1, 0, 0, 1, 0), '|'));
     let mut ans = parse_next_token(&mut input, &mut state).unwrap();
     ans.set_span(Span::new());
     assert_eq!(
         ans,
-        Token::PointyTagHead(
+        RawToken::PointyTagHead(
             Span::new2(0, 1, 0, 0, 1, 0),
             "<(g)sentence".to_string(),
             BasicName {
@@ -937,12 +937,12 @@ fn parse_next_token_4() {
     );
     let mut ans = parse_next_token(&mut input, &mut state).unwrap();
     ans.set_span(Span::new());
-    assert_eq!(ans, Token::PointyTagTail(Span::new2(0, 1, 0, 0, 1, 0), '|'));
+    assert_eq!(ans, RawToken::PointyTagTail(Span::new2(0, 1, 0, 0, 1, 0), '|'));
     let mut ans = parse_next_token(&mut input, &mut state).unwrap();
     ans.set_span(Span::new());
     assert_eq!(
         ans,
-        Token::InlineText(
+        RawToken::InlineText(
             Span::new2(0, 1, 0, 0, 1, 0),
             "I, by attorney, bless thee from thy mother,".to_string(),
             "I, by attorney, bless thee from thy mother,".to_string(),
@@ -952,7 +952,7 @@ fn parse_next_token_4() {
     ans.set_span(Span::new());
     assert_eq!(
         ans,
-        Token::PointyTagHead(
+        RawToken::PointyTagHead(
             Span::new2(0, 1, 0, 0, 1, 0),
             "|(t)line".to_string(),
             BasicName {
@@ -965,12 +965,12 @@ fn parse_next_token_4() {
     );
     let mut ans = parse_next_token(&mut input, &mut state).unwrap();
     ans.set_span(Span::new());
-    assert_eq!(ans, Token::PointyTagTail(Span::new2(0, 1, 0, 0, 1, 0), '>'));
+    assert_eq!(ans, RawToken::PointyTagTail(Span::new2(0, 1, 0, 0, 1, 0), '>'));
     let mut ans = parse_next_token(&mut input, &mut state).unwrap();
     ans.set_span(Span::new());
     assert_eq!(
         ans,
-        Token::InlineText(
+        RawToken::InlineText(
             Span::new2(0, 1, 0, 0, 1, 0),
             "\n  ".to_string(),
             "".to_string()
@@ -980,7 +980,7 @@ fn parse_next_token_4() {
     ans.set_span(Span::new());
     assert_eq!(
         ans,
-        Token::PointyTagHead(
+        RawToken::PointyTagHead(
             Span::new2(0, 1, 0, 0, 1, 0),
             "<(t)line".to_string(),
             BasicName {
@@ -993,7 +993,7 @@ fn parse_next_token_4() {
     );
     let mut ans = parse_next_token(&mut input, &mut state).unwrap();
     ans.set_span(Span::new());
-    assert_eq!(ans, Token::PointyTagTail(Span::new2(0, 1, 0, 0, 1, 0), '|'));
+    assert_eq!(ans, RawToken::PointyTagTail(Span::new2(0, 1, 0, 0, 1, 0), '|'));
 }
 
 #[test]
@@ -1005,7 +1005,7 @@ fn parse_next_token_5() {
     ans.set_span(Span::new());
     assert_eq!(
         ans,
-        Token::PointyTagHead(
+        RawToken::PointyTagHead(
             Span::new2(0, 1, 0, 0, 1, 0),
             "<(t)paragraph".to_string(),
             BasicName {
@@ -1018,12 +1018,12 @@ fn parse_next_token_5() {
     );
     let mut ans = parse_next_token(&mut input, &mut state).unwrap();
     ans.set_span(Span::new());
-    assert_eq!(ans, Token::PointyTagTail(Span::new2(0, 1, 0, 0, 1, 0), '|'));
+    assert_eq!(ans, RawToken::PointyTagTail(Span::new2(0, 1, 0, 0, 1, 0), '|'));
     let mut ans = parse_next_token(&mut input, &mut state).unwrap();
     ans.set_span(Span::new());
     assert_eq!(
         ans,
-        Token::CodeBlock(
+        RawToken::CodeBlock(
             Span::new2(0, 1, 0, 0, 1, 0),
             "```my `` {code} ```".to_string(),
             "my `` {code} ".to_string(),
@@ -1033,7 +1033,7 @@ fn parse_next_token_5() {
     ans.set_span(Span::new());
     assert_eq!(
         ans,
-        Token::InlineMathText(
+        RawToken::InlineMathText(
             Span::new2(0, 1, 0, 0, 1, 0),
             "$\\int$".to_string(),
             "\\int".to_string(),
@@ -1043,7 +1043,7 @@ fn parse_next_token_5() {
     ans.set_span(Span::new());
     assert_eq!(
         ans,
-        Token::PointyTagHead(
+        RawToken::PointyTagHead(
             Span::new2(0, 1, 0, 0, 1, 0),
             "|(t)".to_string(),
             BasicName {
@@ -1056,5 +1056,5 @@ fn parse_next_token_5() {
     );
     let mut ans = parse_next_token(&mut input, &mut state).unwrap();
     ans.set_span(Span::new());
-    assert_eq!(ans, Token::PointyTagTail(Span::new2(0, 1, 0, 0, 1, 0), '>'));
+    assert_eq!(ans, RawToken::PointyTagTail(Span::new2(0, 1, 0, 0, 1, 0), '>'));
 }

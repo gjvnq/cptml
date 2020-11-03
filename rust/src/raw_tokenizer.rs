@@ -43,7 +43,7 @@ impl Eq for Number {}
 
 // Self Note: when making a tree structure, the original "form" will always be printed if possible (use dirty bit?)
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Token {
+pub enum RawToken {
     // (span, raw, parsed)
     CodeBlock(Span, String, String),
     Whitespace(Span, String, String),
@@ -60,33 +60,33 @@ pub enum Token {
     PointyTagTail(Span, char),
 }
 
-impl Token {
+impl RawToken {
     pub fn set_span(&mut self, new_span: Span) {
-        if let Token::CodeBlock(ref mut span, _, _) = self {
+        if let RawToken::CodeBlock(ref mut span, _, _) = self {
             *span = new_span;
-        } else if let Token::Whitespace(ref mut span, _, _) = self {
+        } else if let RawToken::Whitespace(ref mut span, _, _) = self {
             *span = new_span;
-        } else if let Token::TextMarker(ref mut span, _) = self {
+        } else if let RawToken::TextMarker(ref mut span, _) = self {
             *span = new_span;
-        } else if let Token::InlineText(ref mut span, _, _) = self {
+        } else if let RawToken::InlineText(ref mut span, _, _) = self {
             *span = new_span;
-        } else if let Token::InlineMathText(ref mut span, _, _) = self {
+        } else if let RawToken::InlineMathText(ref mut span, _, _) = self {
             *span = new_span;
-        } else if let Token::DisplayMathText(ref mut span, _, _) = self {
+        } else if let RawToken::DisplayMathText(ref mut span, _, _) = self {
             *span = new_span;
-        } else if let Token::AttributeName(ref mut span, _, _) = self {
+        } else if let RawToken::AttributeName(ref mut span, _, _) = self {
             *span = new_span;
-        } else if let Token::NumericValue(ref mut span, _, _) = self {
+        } else if let RawToken::NumericValue(ref mut span, _, _) = self {
             *span = new_span;
-        } else if let Token::StringValue(ref mut span, _, _) = self {
+        } else if let RawToken::StringValue(ref mut span, _, _) = self {
             *span = new_span;
-        } else if let Token::CurlyTagStart(ref mut span, _, _) = self {
+        } else if let RawToken::CurlyTagStart(ref mut span, _, _) = self {
             *span = new_span;
-        } else if let Token::CurlyTagEnd(ref mut span, _) = self {
+        } else if let RawToken::CurlyTagEnd(ref mut span, _) = self {
             *span = new_span;
-        } else if let Token::PointyTagHead(ref mut span, _, _) = self {
+        } else if let RawToken::PointyTagHead(ref mut span, _, _) = self {
             *span = new_span;
-        } else if let Token::PointyTagTail(ref mut span, _) = self {
+        } else if let RawToken::PointyTagTail(ref mut span, _) = self {
             *span = new_span;
         } else {
             unreachable!();
@@ -221,7 +221,7 @@ fn next_state(src: &mut PeekReader, state: &mut State) -> Option<TokenizerError>
     return None;
 }
 
-fn parse_code_block(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
+fn parse_code_block(src: &mut PeekReader, state: &mut State) -> Result<RawToken, TokenizerError> {
     state.mode = Mode::CodeBlock;
     let mut start_num = 0;
     let mut finished_start = false;
@@ -265,16 +265,16 @@ fn parse_code_block(src: &mut PeekReader, state: &mut State) -> Result<Token, To
         raw.push(src.pop());
     }
 
-    Ok(Token::CodeBlock(Span::new(), raw, val))
+    Ok(RawToken::CodeBlock(Span::new(), raw, val))
 }
 
-fn parse_text_marker(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
+fn parse_text_marker(src: &mut PeekReader, state: &mut State) -> Result<RawToken, TokenizerError> {
     state.mode = Mode::TextMarker;
     let pop_c = src.peek(1);
 
     if pop_c == ';' {
         src.pop();
-        return Ok(Token::TextMarker(Span::new(), pop_c));
+        return Ok(RawToken::TextMarker(Span::new(), pop_c));
     } else {
         return Err(TokenizerError::IllegalChar2(
             src.get_pos(),
@@ -284,7 +284,7 @@ fn parse_text_marker(src: &mut PeekReader, state: &mut State) -> Result<Token, T
     }
 }
 
-fn parse_math(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
+fn parse_math(src: &mut PeekReader, state: &mut State) -> Result<RawToken, TokenizerError> {
     state.mode = Mode::Math;
     let (pop_c, next_c) = (src.peek(1), src.peek(2));
     let mut raw = String::new();
@@ -320,12 +320,12 @@ fn parse_math(src: &mut PeekReader, state: &mut State) -> Result<Token, Tokenize
     }
 
     match long_math {
-        true => Ok(Token::DisplayMathText(Span::new(), raw, val)),
-        false => Ok(Token::InlineMathText(Span::new(), raw, val)),
+        true => Ok(RawToken::DisplayMathText(Span::new(), raw, val)),
+        false => Ok(RawToken::InlineMathText(Span::new(), raw, val)),
     }
 }
 
-fn parse_whitespace(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
+fn parse_whitespace(src: &mut PeekReader, state: &mut State) -> Result<RawToken, TokenizerError> {
     state.mode = Mode::WhitespaceAttrName;
     let mut ans = String::new();
     let mut has_break = false;
@@ -346,10 +346,10 @@ fn parse_whitespace(src: &mut PeekReader, state: &mut State) -> Result<Token, To
         true => String::new(),
     };
 
-    return Ok(Token::Whitespace(Span::new(), ans, val));
+    return Ok(RawToken::Whitespace(Span::new(), ans, val));
 }
 
-fn parse_inline_text(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
+fn parse_inline_text(src: &mut PeekReader, state: &mut State) -> Result<RawToken, TokenizerError> {
     state.mode = Mode::InlineText;
     let mut text_escape = TextEscapeState::Normal;
     let mut ans_raw = String::new();
@@ -443,7 +443,7 @@ fn parse_inline_text(src: &mut PeekReader, state: &mut State) -> Result<Token, T
             fn ret_uni_err(
                 src: &PeekReader,
                 buf_unicode: &String,
-            ) -> Result<Token, TokenizerError> {
+            ) -> Result<RawToken, TokenizerError> {
                 let s_err = "\\u".to_string() + &buf_unicode;
                 return Err(TokenizerError::IllegalEscapeSequence(src.get_pos(), s_err));
             }
@@ -479,10 +479,10 @@ fn parse_inline_text(src: &mut PeekReader, state: &mut State) -> Result<Token, T
         }
     }
 
-    return Ok(Token::InlineText(Span::new(), ans_raw, ans_parsed));
+    return Ok(RawToken::InlineText(Span::new(), ans_raw, ans_parsed));
 }
 
-fn parse_tag(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
+fn parse_tag(src: &mut PeekReader, state: &mut State) -> Result<RawToken, TokenizerError> {
     state.mode = Mode::Tag;
 
     let pop_c = src.peek(1);
@@ -495,24 +495,24 @@ fn parse_tag(src: &mut PeekReader, state: &mut State) -> Result<Token, Tokenizer
 
     if pop_c == '}' {
         state.inside_tag = TagType::NotTag;
-        return Ok(Token::CurlyTagEnd(Span::new(), src.pop()));
+        return Ok(RawToken::CurlyTagEnd(Span::new(), src.pop()));
     }
     if pop_c == '>' {
         state.inside_tag = TagType::NotTag;
-        return Ok(Token::PointyTagTail(Span::new(), src.pop()));
+        return Ok(RawToken::PointyTagTail(Span::new(), src.pop()));
     }
     if pop_c == '|' && state.inside_tag == TagType::PointyTag {
         state.inside_tag = TagType::NotTag;
-        return Ok(Token::PointyTagTail(Span::new(), src.pop()));
+        return Ok(RawToken::PointyTagTail(Span::new(), src.pop()));
     }
     let ans_kind = match pop_c {
-        '{' => Token::CurlyTagStart(Span::new(), String::new(), BasicName::new()),
-        '}' => Token::CurlyTagEnd(Span::new(), '}'),
-        '<' => Token::PointyTagHead(Span::new(), String::new(), BasicName::new()),
-        '>' => Token::PointyTagTail(Span::new(), '>'),
+        '{' => RawToken::CurlyTagStart(Span::new(), String::new(), BasicName::new()),
+        '}' => RawToken::CurlyTagEnd(Span::new(), '}'),
+        '<' => RawToken::PointyTagHead(Span::new(), String::new(), BasicName::new()),
+        '>' => RawToken::PointyTagTail(Span::new(), '>'),
         '|' => match state.inside_tag {
-            TagType::PointyTag => Token::PointyTagTail(Span::new(), '|'),
-            _ => Token::PointyTagHead(Span::new(), String::new(), BasicName::new()),
+            TagType::PointyTag => RawToken::PointyTagTail(Span::new(), '|'),
+            _ => RawToken::PointyTagHead(Span::new(), String::new(), BasicName::new()),
         },
         _ => {
             return Err(TokenizerError::IllegalChar2(
@@ -576,18 +576,18 @@ fn parse_tag(src: &mut PeekReader, state: &mut State) -> Result<Token, Tokenizer
     }
 
     match ans_kind {
-        Token::CurlyTagStart(_, _, _) => {
-            return Ok(Token::CurlyTagStart(Span::new(), raw_name, name))
+        RawToken::CurlyTagStart(_, _, _) => {
+            return Ok(RawToken::CurlyTagStart(Span::new(), raw_name, name))
         }
-        Token::PointyTagHead(_, _, _) => {
-            return Ok(Token::PointyTagHead(Span::new(), raw_name, name))
+        RawToken::PointyTagHead(_, _, _) => {
+            return Ok(RawToken::PointyTagHead(Span::new(), raw_name, name))
         }
-        Token::PointyTagTail(_, _) => return Ok(Token::PointyTagTail(Span::new(), open)),
+        RawToken::PointyTagTail(_, _) => return Ok(RawToken::PointyTagTail(Span::new(), open)),
         _ => panic!("hi"),
     }
 }
 
-fn parse_attr_name(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
+fn parse_attr_name(src: &mut PeekReader, state: &mut State) -> Result<RawToken, TokenizerError> {
     state.mode = Mode::AttributeName;
 
     let mut name = BasicName::new();
@@ -624,10 +624,10 @@ fn parse_attr_name(src: &mut PeekReader, state: &mut State) -> Result<Token, Tok
         return Err(TokenizerError::MissingLocalName(start_pos));
     }
 
-    return Ok(Token::AttributeName(Span::new(), raw_name, name));
+    return Ok(RawToken::AttributeName(Span::new(), raw_name, name));
 }
 
-fn parse_string_value(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
+fn parse_string_value(src: &mut PeekReader, state: &mut State) -> Result<RawToken, TokenizerError> {
     state.mode = Mode::StringValue;
 
     let pop_c = src.peek(1);
@@ -692,7 +692,7 @@ fn parse_string_value(src: &mut PeekReader, state: &mut State) -> Result<Token, 
             fn ret_uni_err(
                 src: &PeekReader,
                 buf_unicode: &String,
-            ) -> Result<Token, TokenizerError> {
+            ) -> Result<RawToken, TokenizerError> {
                 let s_err = "\\u".to_string() + &buf_unicode;
                 return Err(TokenizerError::IllegalEscapeSequence(src.get_pos(), s_err));
             }
@@ -724,10 +724,10 @@ fn parse_string_value(src: &mut PeekReader, state: &mut State) -> Result<Token, 
         raw_val.push(src.pop());
     }
 
-    return Ok(Token::StringValue(Span::new(), raw_val, val));
+    return Ok(RawToken::StringValue(Span::new(), raw_val, val));
 }
 
-fn parse_numeric_value(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
+fn parse_numeric_value(src: &mut PeekReader, state: &mut State) -> Result<RawToken, TokenizerError> {
     state.mode = Mode::NumericValue;
 
     let mut buf = "".to_string();
@@ -761,18 +761,18 @@ fn parse_numeric_value(src: &mut PeekReader, state: &mut State) -> Result<Token,
 
     if dot {
         match buf.parse::<f64>() {
-            Ok(v) => return Ok(Token::NumericValue(Span::new(), raw, Number::Float(v))),
+            Ok(v) => return Ok(RawToken::NumericValue(Span::new(), raw, Number::Float(v))),
             _ => return Err(TokenizerError::IllegalNumber(span, raw)),
         };
     } else {
         match buf.parse::<i64>() {
-            Ok(v) => return Ok(Token::NumericValue(Span::new(), raw, Number::Integer(v))),
+            Ok(v) => return Ok(RawToken::NumericValue(Span::new(), raw, Number::Integer(v))),
             _ => return Err(TokenizerError::IllegalNumber(span, raw)),
         };
     }
 }
 
-fn parse_next_token(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
+fn parse_next_token(src: &mut PeekReader, state: &mut State) -> Result<RawToken, TokenizerError> {
     let mut i = 0;
     loop {
         if i >= LIMIT_RETRYS {
@@ -832,7 +832,7 @@ impl RawTokenizer {
             state: State::new(),
         }
     }
-    pub fn next(&mut self) -> Result<Token, TokenizerError> {
+    pub fn next(&mut self) -> Result<RawToken, TokenizerError> {
         parse_next_token(&mut self.src, &mut self.state)
     }
 }
