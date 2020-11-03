@@ -1,9 +1,5 @@
 //! This module/file contains low level stuff you probably should not use.
 
-#![allow(dead_code)]
-#![allow(unused_variables)]
-
-
 use crate::hacks::is_valid_id_char;
 use crate::hacks::u32_to_char;
 
@@ -11,7 +7,6 @@ use crate::peek_reader::PeekReader;
 use crate::pos::Position;
 use crate::pos::Span;
 use core::fmt::Debug;
-use std::mem;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BasicName {
@@ -99,50 +94,8 @@ impl Token {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-// The idea is that simply printing an array of RawToken you get the exact same thing as the input
-pub enum RawToken {
-    CodeBlock(Span, String),
-    Whitespace(Span, String),
-    TextMarker(Span, char),
-    InlineText(Span, String),
-    InlineMathText(Span, String),
-    DisplayMathText(Span, String),
-    AttributeName(Span, String),
-    NumericValue(Span, String),
-    StringValue(Span, String),
-    CurlyTagStart(Span, String),
-    CurlyTagEnd(Span),
-    PointyTagHead(Span, String),
-    PointyTagTail(Span, String),
-}
-
-type GotFirstLetter = bool;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Mode {
-    StartOfInput,
-    CodeBlock,
-    TextMarker,
-    WhitespaceAttrName,
-    Tag,
-    InlineTextNew,
-    InlineText(TextEscapeState),
-    InlineMathText,
-    DisplayMathText,
-    AttributeNameNew,
-    AttributeName(GotFirstLetter),
-    BooleanValue,
-    NumericValue,
-    StringValue,
-    CurlyTagStart,
-    CurlyTagEnd,
-    PointyTagHead,
-    PointyTagTail,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ModeNew {
     Default,
     StartOfInput,
     CodeBlock,
@@ -158,14 +111,14 @@ enum ModeNew {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct State {
-    mode: ModeNew,
+    mode: Mode,
     inside_tag: TagType,
 }
 
 impl State {
     fn new() -> State {
         State {
-            mode: ModeNew::StartOfInput,
+            mode: Mode::StartOfInput,
             inside_tag: TagType::NotTag,
         }
     }
@@ -177,7 +130,6 @@ enum TagType {
     CurlyTag,
     PointyTag,
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TextEscapeState {
@@ -207,7 +159,7 @@ pub enum TokenizerError {
 const LIMIT_RETRYS: i32 = 10;
 
 fn next_state(src: &mut PeekReader, state: &mut State) -> Option<TokenizerError> {
-    let (last_c, pop_c, next_c, next_three) = (src.peek(0), src.peek(1), src.peek(2), src.peek_string(1, 3));
+    let (pop_c, next_three) = (src.peek(1), src.peek_string(1, 3));
     let mut i = 0;
 
     loop {
@@ -216,28 +168,28 @@ fn next_state(src: &mut PeekReader, state: &mut State) -> Option<TokenizerError>
         }
         i += 1;
         state.mode = match state.mode {
-            ModeNew::StartOfInput | ModeNew::Default => match pop_c {
-                '{' | '}' | '<' | '|' => ModeNew::Tag,
-                '$' => ModeNew::Math,
-                _ if next_three == "```" => ModeNew::CodeBlock,
-                _ => ModeNew::InlineText,
+            Mode::StartOfInput | Mode::Default => match pop_c {
+                '{' | '}' | '<' | '|' => Mode::Tag,
+                '$' => Mode::Math,
+                _ if next_three == "```" => Mode::CodeBlock,
+                _ => Mode::InlineText,
             },
-            ModeNew::TextMarker => ModeNew::Default,
-            ModeNew::InlineText => ModeNew::Default,
-            ModeNew::Tag => match pop_c {
-                ';' => ModeNew::TextMarker,
-                '{' | '}' | '<' | '|' | '>' => ModeNew::Tag,
-                _ if next_three == "```" => ModeNew::CodeBlock,
+            Mode::TextMarker => Mode::Default,
+            Mode::InlineText => Mode::Default,
+            Mode::Tag => match pop_c {
+                ';' => Mode::TextMarker,
+                '{' | '}' | '<' | '|' | '>' => Mode::Tag,
+                _ if next_three == "```" => Mode::CodeBlock,
                 pop_c if pop_c.is_whitespace() => match state.inside_tag {
-                    TagType::NotTag => ModeNew::Default,
-                    _ => ModeNew::WhitespaceAttrName,
+                    TagType::NotTag => Mode::Default,
+                    _ => Mode::WhitespaceAttrName,
                 },
-                _ => ModeNew::Default,
+                _ => Mode::Default,
             },
-            ModeNew::WhitespaceAttrName => ModeNew::AttributeName,
-            ModeNew::AttributeName => match pop_c {
-                '0'..='9' => ModeNew::NumericValue,
-                '"' => ModeNew::StringValue,
+            Mode::WhitespaceAttrName => Mode::AttributeName,
+            Mode::AttributeName => match pop_c {
+                '0'..='9' => Mode::NumericValue,
+                '"' => Mode::StringValue,
                 _ => {
                     return Some(TokenizerError::IllegalChar2(
                         src.get_pos(),
@@ -246,10 +198,10 @@ fn next_state(src: &mut PeekReader, state: &mut State) -> Option<TokenizerError>
                     ))
                 }
             },
-            ModeNew::NumericValue | ModeNew::StringValue => match pop_c {
-                ';' => ModeNew::TextMarker,
-                '}' | '>' | '|' => ModeNew::Tag,
-                pop_c if pop_c.is_whitespace() => ModeNew::WhitespaceAttrName,
+            Mode::NumericValue | Mode::StringValue => match pop_c {
+                ';' => Mode::TextMarker,
+                '}' | '>' | '|' => Mode::Tag,
+                pop_c if pop_c.is_whitespace() => Mode::WhitespaceAttrName,
                 _ => {
                     return Some(TokenizerError::IllegalChar2(
                         src.get_pos(),
@@ -258,10 +210,10 @@ fn next_state(src: &mut PeekReader, state: &mut State) -> Option<TokenizerError>
                     ))
                 }
             },
-            ModeNew::CodeBlock => ModeNew::Default,
-            ModeNew::Math => ModeNew::Default,
+            Mode::CodeBlock => Mode::Default,
+            Mode::Math => Mode::Default,
         };
-        if state.mode != ModeNew::Default {
+        if state.mode != Mode::Default {
             break;
         }
     }
@@ -270,6 +222,7 @@ fn next_state(src: &mut PeekReader, state: &mut State) -> Option<TokenizerError>
 }
 
 fn parse_code_block(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
+    state.mode = Mode::CodeBlock;
     let mut start_num = 0;
     let mut finished_start = false;
     let mut counting = false;
@@ -278,7 +231,7 @@ fn parse_code_block(src: &mut PeekReader, state: &mut State) -> Result<Token, To
     let mut val = String::new();
 
     loop {
-        let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
+        let pop_c = src.peek(1);
         if !finished_start {
             if pop_c == '`' {
                 start_num += 1;
@@ -315,9 +268,9 @@ fn parse_code_block(src: &mut PeekReader, state: &mut State) -> Result<Token, To
     Ok(Token::CodeBlock(Span::new(), raw, val))
 }
 
-
 fn parse_text_marker(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
-    let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
+    state.mode = Mode::TextMarker;
+    let pop_c = src.peek(1);
 
     if pop_c == ';' {
         src.pop();
@@ -332,7 +285,8 @@ fn parse_text_marker(src: &mut PeekReader, state: &mut State) -> Result<Token, T
 }
 
 fn parse_math(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
-    let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
+    state.mode = Mode::Math;
+    let (pop_c, next_c) = (src.peek(1), src.peek(2));
     let mut raw = String::new();
     let mut val = String::new();
 
@@ -346,14 +300,14 @@ fn parse_math(src: &mut PeekReader, state: &mut State) -> Result<Token, Tokenize
             src.get_pos(),
             pop_c,
             vec!['$'],
-        ))
+        ));
     }
-    state.mode = ModeNew::Math;
+    state.mode = Mode::Math;
 
     let long_math = next_c == '$';
 
     loop {
-        let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
+        let (pop_c, next_c) = (src.peek(1), src.peek(2));
         raw.push(src.pop());
         if long_math && pop_c == '$' && next_c == '$' {
             raw.push(src.pop());
@@ -367,16 +321,17 @@ fn parse_math(src: &mut PeekReader, state: &mut State) -> Result<Token, Tokenize
 
     match long_math {
         true => Ok(Token::DisplayMathText(Span::new(), raw, val)),
-        false => Ok(Token::InlineMathText(Span::new(), raw, val))
+        false => Ok(Token::InlineMathText(Span::new(), raw, val)),
     }
 }
 
 fn parse_whitespace(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
+    state.mode = Mode::WhitespaceAttrName;
     let mut ans = String::new();
     let mut has_break = false;
 
     loop {
-        let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
+        let pop_c = src.peek(1);
         if !pop_c.is_whitespace() {
             break;
         }
@@ -395,7 +350,7 @@ fn parse_whitespace(src: &mut PeekReader, state: &mut State) -> Result<Token, To
 }
 
 fn parse_inline_text(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
-    state.mode = ModeNew::InlineText;
+    state.mode = Mode::InlineText;
     let mut text_escape = TextEscapeState::Normal;
     let mut ans_raw = String::new();
     let mut ans_parsed = String::new();
@@ -412,7 +367,6 @@ fn parse_inline_text(src: &mut PeekReader, state: &mut State) -> Result<Token, T
             // Check if we need to change state
             let pop_special =
                 pop_c == '{' || pop_c == '}' || pop_c == '<' || pop_c == '>' || pop_c == '|';
-            // println!("pop_special={}, last_c={:?} next_c={:?}", pop_special, last_c, next_c);
             if pop_special && (last_c != ' ' || next_c != ' ') {
                 break;
             }
@@ -529,9 +483,9 @@ fn parse_inline_text(src: &mut PeekReader, state: &mut State) -> Result<Token, T
 }
 
 fn parse_tag(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
-    state.mode = ModeNew::Tag;
+    state.mode = Mode::Tag;
 
-    let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
+    let pop_c = src.peek(1);
     let mut name = BasicName::new();
     let mut first = true;
     let mut raw_name = "".to_string();
@@ -578,7 +532,7 @@ fn parse_tag(src: &mut PeekReader, state: &mut State) -> Result<Token, Tokenizer
     raw_name.push(src.pop());
 
     loop {
-        let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
+        let pop_c = src.peek(1);
         if pop_c == '\0' || pop_c.is_whitespace() {
             break;
         }
@@ -634,7 +588,7 @@ fn parse_tag(src: &mut PeekReader, state: &mut State) -> Result<Token, Tokenizer
 }
 
 fn parse_attr_name(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
-    state.mode = ModeNew::AttributeName;
+    state.mode = Mode::AttributeName;
 
     let mut name = BasicName::new();
     let mut raw_name = "".to_string();
@@ -642,7 +596,7 @@ fn parse_attr_name(src: &mut PeekReader, state: &mut State) -> Result<Token, Tok
     let mut first = true;
 
     loop {
-        let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
+        let pop_c = src.peek(1);
         if !first && pop_c == '=' {
             raw_name.push(src.pop());
             break;
@@ -674,9 +628,9 @@ fn parse_attr_name(src: &mut PeekReader, state: &mut State) -> Result<Token, Tok
 }
 
 fn parse_string_value(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
-    state.mode = ModeNew::StringValue;
+    state.mode = Mode::StringValue;
 
-    let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
+    let pop_c = src.peek(1);
     let mut raw_val = "".to_string();
     let mut val = "".to_string();
     let mut buf_unicode = "".to_string();
@@ -693,7 +647,7 @@ fn parse_string_value(src: &mut PeekReader, state: &mut State) -> Result<Token, 
     raw_val.push(src.pop());
 
     loop {
-        let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
+        let (pop_c, next_c) = (src.peek(1), src.peek(2));
         println!("pop_c={:?} mode={:?}", pop_c, mode);
         if pop_c == '\0' {
             return Err(TokenizerError::IllegalChar2(
@@ -774,7 +728,7 @@ fn parse_string_value(src: &mut PeekReader, state: &mut State) -> Result<Token, 
 }
 
 fn parse_numeric_value(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
-    state.mode = ModeNew::NumericValue;
+    state.mode = Mode::NumericValue;
 
     let mut buf = "".to_string();
     let mut raw = "".to_string();
@@ -782,7 +736,7 @@ fn parse_numeric_value(src: &mut PeekReader, state: &mut State) -> Result<Token,
     let mut span = Span::new_from(src.get_pos());
 
     loop {
-        let (last_c, pop_c, next_c) = (src.peek(0), src.peek(1), src.peek(2));
+        let pop_c = src.peek(1);
         if pop_c == '\0' || pop_c == '}' || pop_c == ';' || pop_c == '>' || pop_c == '|' {
             break;
         }
@@ -818,10 +772,7 @@ fn parse_numeric_value(src: &mut PeekReader, state: &mut State) -> Result<Token,
     }
 }
 
-fn parse_next_token(
-    src: &mut PeekReader,
-    state: &mut State,
-) -> Result<Token, TokenizerError> {
+fn parse_next_token(src: &mut PeekReader, state: &mut State) -> Result<Token, TokenizerError> {
     let mut i = 0;
     loop {
         if i >= LIMIT_RETRYS {
@@ -841,17 +792,17 @@ fn parse_next_token(
         };
 
         let func = match state.mode {
-            ModeNew::StartOfInput => unreachable!(),
-            ModeNew::Default => unreachable!(),
-            ModeNew::InlineText => parse_inline_text,
-            ModeNew::WhitespaceAttrName => parse_whitespace,
-            ModeNew::CodeBlock => parse_code_block,
-            ModeNew::TextMarker => parse_text_marker,
-            ModeNew::Math => parse_math,
-            ModeNew::Tag => parse_tag,
-            ModeNew::AttributeName => parse_attr_name,
-            ModeNew::StringValue => parse_string_value,
-            ModeNew::NumericValue => parse_numeric_value,
+            Mode::StartOfInput => unreachable!(),
+            Mode::Default => unreachable!(),
+            Mode::InlineText => parse_inline_text,
+            Mode::WhitespaceAttrName => parse_whitespace,
+            Mode::CodeBlock => parse_code_block,
+            Mode::TextMarker => parse_text_marker,
+            Mode::Math => parse_math,
+            Mode::Tag => parse_tag,
+            Mode::AttributeName => parse_attr_name,
+            Mode::StringValue => parse_string_value,
+            Mode::NumericValue => parse_numeric_value,
         };
         let mut ans = match func(src, state) {
             Ok(v) => v,
@@ -871,571 +822,21 @@ fn parse_next_token(
 #[derive(Debug)]
 pub struct RawTokenizer {
     src: Box<PeekReader>,
-    txt: String,
-    tmp: String,
-    span: Span,
-    state: Mode,
-    result: Option<RawToken>,
-    done: bool,
-    repeat_c: bool,
-    inside_tag: TagType,
+    state: State,
 }
 
-// TODO: untangle this mess!
-// impl RawTokenizer {
-//     pub fn new(reader: Box<dyn ByteReader>) -> Self {
-//         RawTokenizer {
-//             src: Box::new(PeekReader::new(reader)),
-//             txt: "".to_string(),
-//             tmp: "".to_string(),
-//             state: Mode::InlineText(TextEscapeState::Normal),
-//             span: Span::new(),
-//             result: None,
-//             done: false,
-//             repeat_c: false,
-//             inside_tag: TagType::NotTag,
-//         }
-//     }
-
-//     #[allow(mutable_borrow_reservation_conflict)]
-//     fn until_yield(&mut self) {
-//         self.result = None;
-//         if self.done {
-//             return;
-//         }
-
-//         self.span = Span::new_from(self.src.get_pos());
-//         while self.result.is_none() {
-//             let c = match self.repeat_c {
-//                 false => self.src.pop(),
-//                 true => self.src.peek(0),
-//             };
-//             self.repeat_c = false;
-//             // Finish if EOF
-//             if c == '\0' {
-//                 self.done = true;
-//                 match &self.state {
-//                     Mode::InlineText(substate) => self.result_text(*substate),
-//                     Mode::CurlyTagStart => self.result_curly_start(),
-//                     Mode::CurlyTagEnd => self.result_curly_end(),
-//                     Mode::PointyTagHead => self.result_pointy_start(),
-//                     Mode::PointyTagTail => self.result_pointy_end(),
-//                     Mode::StringValue => self.result_string_value(),
-//                     Mode::NumericValue => self.result_numeric_value(),
-//                     Mode::TextMarker => self.result_text_marker(c),
-//                     Mode::AttributeName(_) => self.result_attribute_name(),
-//                     _ => panic!("unexpected state: {:?}", self.state),
-//                 }
-//                 return;
-//             }
-//             // Process new char
-//             match &self.state {
-//                 Mode::InlineText(substate) => self.mode_text(c, *substate),
-//                 Mode::CurlyTagStart => self.mode_curly_start(c),
-//                 Mode::CurlyTagEnd => self.mode_curly_end(c),
-//                 Mode::PointyTagHead => self.mode_pointy_start(c),
-//                 Mode::PointyTagTail => self.mode_pointy_end(c),
-//                 Mode::StringValue => self.mode_string_value(c),
-//                 Mode::NumericValue => self.mode_numeric_value(c),
-//                 Mode::TextMarker => self.result_text_marker(c),
-//                 Mode::AttributeName(got_first_letter) => {
-//                     self.mode_attribute_name(c, *got_first_letter)
-//                 }
-//                 _ => panic!("unexpected state: {:?}", self.state),
-//             }
-//         }
-//     }
-
-//     fn peek_next_state_attr(&mut self, dist: isize) {
-//         let next_c = self.src.peek(dist);
-//         println!("peek_next_state_attr({}) {:?}", dist, next_c);
-//         if next_c == '}' && self.inside_tag == TagType::CurlyTag {
-//             self.state = Mode::CurlyTagEnd;
-//         } else if next_c == '>' && self.inside_tag == TagType::PointyTag {
-//             self.state = Mode::PointyTagTail;
-//         } else if next_c == ';' && self.inside_tag == TagType::CurlyTag {
-//             self.state = Mode::TextMarker;
-//         } else if next_c == '|' && self.inside_tag == TagType::PointyTag {
-//             self.state = Mode::TextMarker;
-//         } else if next_c == '}' || next_c == '>' || next_c == ';' || next_c == '|' {
-//             let mut pos = self.src.get_pos().clone();
-//             pos.step(next_c);
-//             panic!("unexpected character {:?} at {:?}", next_c, pos)
-//         } else {
-//             self.state = Mode::AttributeName(false);
-//         }
-//     }
-
-//     fn result_text_marker(&mut self, c: char) {
-//         self.span.step(c);
-//         self.result = Some(RawToken::TextMarker(self.span, c));
-//         self.state = Mode::InlineText(TextEscapeState::Normal);
-//     }
-
-//     fn result_numeric_value(&mut self) {
-//         self.result = Some(RawToken::NumericValue(self.span, self.txt.clone()));
-//     }
-
-//     fn mode_numeric_value(&mut self, c: char) {
-//         if c.is_ascii_digit() || c == '.' || c == '_' {
-//             self.txt.push(c);
-//             self.span.step(c);
-//         } else if c.is_whitespace() {
-//             self.state = Mode::AttributeName(false);
-//             self.repeat_c = true;
-//             self.result_numeric_value();
-//         } else {
-//             self.peek_next_state_attr(0);
-//             self.repeat_c = true;
-//             self.result_numeric_value();
-//         }
-//     }
-
-//     fn result_string_value(&mut self) {
-//         self.result = Some(RawToken::StringValue(self.span, self.txt.clone()));
-//     }
-
-//     fn mode_string_value(&mut self, c: char) {
-//         let last_c = self.src.peek(-1);
-//         self.txt.push(c);
-//         self.span.step(c);
-//         println!("mode_string_value: `{}`", self.txt);
-
-//         if c == '\"' && last_c != '\\' && self.txt.len() > 1 {
-//             println!("{:?} ({:?}) {:?}", last_c, c, self.src.peek(1));
-//             self.result_string_value();
-//             self.peek_next_state_attr(1);
-//         }
-//     }
-
-//     fn result_attribute_name(&mut self) {
-//         self.result = Some(RawToken::AttributeName(self.span, self.txt.clone()));
-//     }
-
-//     fn mode_attribute_name(&mut self, c: char, first: bool) {
-//         let mut got_first_letter = first;
-
-//         let id_char = match got_first_letter {
-//             false => is_valid_id_first_char(c),
-//             true => is_valid_id_next_char(c),
-//         };
-//         if !got_first_letter {
-//             if id_char {
-//                 got_first_letter = true;
-//                 self.state = Mode::AttributeName(got_first_letter);
-//             } else if !c.is_whitespace() {
-//                 // attribute names can't begin with digits
-//                 panic!("unexpected character {:?} at {:?}", c, self.span.end);
-//             }
-//         }
-//         if id_char || c == '=' || !got_first_letter || c == ';' {
-//             self.txt.push(c);
-//             self.span.step(c);
-//         }
-
-//         if c == '=' || (c.is_whitespace() && got_first_letter) {
-//             self.result_attribute_name();
-//             let next_c = self.src.peek(1);
-//             if next_c == '\"' {
-//                 self.state = Mode::StringValue;
-//             } else if next_c == 'f' || next_c == 't' {
-//                 self.state = Mode::BooleanValue;
-//             } else if next_c.is_ascii_digit() || next_c == '.' {
-//                 self.state = Mode::NumericValue;
-//             } else if c.is_whitespace() {
-//                 self.state = Mode::AttributeName(false);
-//             } else {
-//                 panic!("unexpected character {:?} at {:?}", c, self.src.get_pos());
-//             }
-//         } else if c == ';' {
-//             self.state = Mode::InlineText(TextEscapeState::Normal);
-//             self.repeat_c = false;
-//             self.result_attribute_name();
-//         } else if c == '}' && self.inside_tag == TagType::CurlyTag {
-//             self.state = Mode::CurlyTagEnd;
-//             self.repeat_c = true;
-//             self.result_attribute_name();
-//         } else if c == '>' && self.inside_tag == TagType::PointyTag {
-//             self.state = Mode::PointyTagTail;
-//             self.repeat_c = true;
-//             self.result_attribute_name();
-//         } else if !id_char && !c.is_whitespace() {
-//             panic!("unexpected character {:?} at {:?}", c, self.span.end);
-//         }
-//     }
-
-//     fn result_pointy_end(&mut self) {}
-
-//     fn mode_pointy_end(&mut self, c: char) {}
-
-//     fn result_pointy_start(&mut self) {}
-
-//     fn mode_pointy_start(&mut self, c: char) {}
-
-//     fn result_curly_end(&mut self) {
-//         self.result = Some(RawToken::CurlyTagEnd(self.span));
-//     }
-
-//     fn mode_curly_end(&mut self, c: char) {
-//         self.span.step(c);
-//         self.state = Mode::InlineText(TextEscapeState::Normal);
-//         self.result_curly_end();
-//         self.inside_tag = TagType::NotTag;
-//     }
-
-//     fn result_curly_start(&mut self) {
-//         self.result = Some(RawToken::CurlyTagStart(self.span, self.txt.clone()));
-//         self.inside_tag = TagType::CurlyTag;
-//     }
-
-//     fn mode_curly_start(&mut self, c: char) {
-//         let last_c = self.src.peek(-1);
-//         if last_c.is_whitespace() && c.is_alphabetic() && self.txt.len() > 0 {
-//             println!("{:?} {:?} {:?}", self.txt, last_c, c);
-//             self.result_curly_start();
-//             self.state = Mode::AttributeName(true);
-//             self.repeat_c = true;
-//             return;
-//         }
-//         if c != '}' {
-//             self.txt.push(c);
-//             self.span.step(c);
-//         }
-
-//         if c == '}' || c == ';' {
-//             match c {
-//                 '}' => self.state = Mode::CurlyTagEnd,
-//                 ';' => self.state = Mode::InlineText(TextEscapeState::Normal),
-//                 _ => {}
-//             }
-//             self.result_curly_start();
-//         }
-//         if c == '}' {
-//             self.repeat_c = true;
-//             return;
-//         }
-//     }
-
-//     fn result_text(&mut self, escape: TextEscapeState) {
-//         if self.txt.len() > 0 {
-//             self.result = Some(RawToken::InlineText(self.span, self.txt.clone()));
-//         }
-//     }
-
-//     fn mode_text(&mut self, c: char, substate: TextEscapeState) {
-//         let mut escape = substate;
-
-//         let last_c = self.src.peek(-1);
-//         let next_c = self.src.peek(1);
-//         let between_spaces = (next_c == ' ' || next_c == '\0') && last_c == ' ';
-//         if (c == '{' || c == '}' || c == '<' || c == '|')
-//             && escape == TextEscapeState::Normal
-//             && !between_spaces
-//         {
-//             self.result_text(escape);
-//             match c {
-//                 '{' => self.state = Mode::CurlyTagStart,
-//                 '}' => self.state = Mode::CurlyTagEnd,
-//                 '<' => self.state = Mode::PointyTagHead,
-//                 '|' => self.state = Mode::PointyTagTail,
-//                 _ => {}
-//             }
-//             self.repeat_c = true;
-//         } else {
-//             self.txt.push(c);
-//             self.span.step(c);
-//             if c == '\\' && escape == TextEscapeState::Normal {
-//                 escape = TextEscapeState::Slash;
-//             } else if escape == TextEscapeState::Slash {
-//                 if c == 'u' {
-//                     escape = TextEscapeState::Unicode;
-//                 } else {
-//                     escape = TextEscapeState::Normal;
-//                 }
-//             } else if escape == TextEscapeState::Slash && c == ';' {
-//                 escape = TextEscapeState::Normal;
-//             }
-
-//             self.state = Mode::InlineText(escape);
-//         }
-//     }
-// }
-
-impl Iterator for RawTokenizer {
-    type Item = RawToken;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        // self.until_yield();
-        self.txt.clear();
-
-        let mut ans: Option<RawToken> = None;
-        mem::swap(&mut self.result, &mut ans);
-        return ans;
+impl RawTokenizer {
+    pub fn new(src: Box<PeekReader>) -> RawTokenizer {
+        RawTokenizer {
+            src: src,
+            state: State::new(),
+        }
+    }
+    pub fn next(&mut self) -> Result<Token, TokenizerError> {
+        parse_next_token(&mut self.src, &mut self.state)
     }
 }
 
 #[cfg(test)]
 #[path = "raw_tokenizer_test.rs"]
 mod tests;
-
-// #[cfg(test)]
-// mod tests {
-//     use crate::raw_tokenizer::*;
-
-//     #[test]
-//     fn test_1() {
-//         let s = "";
-//         let mut parser = RawTokenizer::new(Box::new(s.bytes()));
-//         assert_eq!(parser.next(), None);
-
-//         let s = "a";
-//         let mut parser = RawTokenizer::new(Box::new(s.bytes()));
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::InlineText(
-//                 Span::new2(0, 1, 0, 1, 1, 1),
-//                 "a".to_string()
-//             ))
-//         );
-//         assert_eq!(parser.next(), None);
-
-//         let s = "a{";
-//         let mut parser = RawTokenizer::new(Box::new(s.bytes()));
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::InlineText(
-//                 Span::new2(0, 1, 0, 1, 1, 1),
-//                 "a".to_string()
-//             ))
-//         );
-
-//         let s = "hello world! {";
-//         let mut parser = RawTokenizer::new(Box::new(s.bytes()));
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::InlineText(
-//                 Span::new2(0, 1, 0, 14, 1, 14),
-//                 "hello world! {".to_string()
-//             ))
-//         );
-
-//         let s = "hello > world!{ ";
-//         let mut parser = RawTokenizer::new(Box::new(s.bytes()));
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::InlineText(
-//                 Span::new2(0, 1, 0, 14, 1, 14),
-//                 "hello > world!".to_string()
-//             ))
-//         );
-
-//         let s = "hello } world!{!";
-//         let mut parser = RawTokenizer::new(Box::new(s.bytes()));
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::InlineText(
-//                 Span::new2(0, 1, 0, 14, 1, 14),
-//                 "hello } world!".to_string()
-//             ))
-//         );
-
-//         let s = "\\t } \\{\\s ";
-//         let mut parser = RawTokenizer::new(Box::new(s.bytes()));
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::InlineText(
-//                 Span::new2(0, 1, 0, 10, 1, 10),
-//                 "\\t } \\{\\s ".to_string()
-//             ))
-//         );
-//         assert_eq!(parser.next(), None);
-//     }
-
-//     #[test]
-//     fn test_2() {
-//         let s = "abc {icon}{em; hi! }\n{em ; Hi!\\s} ";
-//         let mut parser = RawTokenizer::new(Box::new(s.bytes()));
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::InlineText(
-//                 Span::new2(0, 1, 0, 4, 1, 4),
-//                 "abc ".to_string()
-//             ))
-//         );
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::CurlyTagStart(
-//                 Span::new2(5, 1, 5, 10, 1, 10),
-//                 "{icon".to_string()
-//             ))
-//         );
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::CurlyTagEnd(Span::new2(10, 1, 10, 11, 1, 11)))
-//         );
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::CurlyTagStart(
-//                 Span::new2(10, 1, 10, 14, 1, 14),
-//                 "{em;".to_string()
-//             ))
-//         );
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::InlineText(
-//                 Span::new2(14, 1, 14, 19, 1, 19),
-//                 " hi! ".to_string()
-//             ))
-//         );
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::CurlyTagEnd(Span::new2(20, 1, 20, 21, 1, 21)))
-//         );
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::InlineText(
-//                 Span::new2(20, 1, 20, 21, 2, 0),
-//                 "\n".to_string()
-//             ))
-//         );
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::CurlyTagStart(
-//                 Span::new2(22, 2, 1, 27, 2, 6),
-//                 "{em ;".to_string()
-//             ))
-//         );
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::InlineText(
-//                 Span::new2(26, 2, 5, 32, 2, 11),
-//                 " Hi!\\s".to_string()
-//             ))
-//         );
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::CurlyTagEnd(Span::new2(33, 2, 12, 34, 2, 13)))
-//         );
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::InlineText(
-//                 Span::new2(33, 2, 12, 34, 2, 13),
-//                 " ".to_string()
-//             ))
-//         );
-//         assert_eq!(parser.next(), None);
-//     }
-
-//     #[test]
-//     fn test_3() {
-//         let s = "abc {icon bool_attr id=\"ab\\\"c\" num=1 val=.5; text   }{end id=\"e\"}";
-//         let mut parser = RawTokenizer::new(Box::new(s.bytes()));
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::InlineText(
-//                 Span::new2(0, 1, 0, 4, 1, 4),
-//                 "abc ".to_string()
-//             ))
-//         );
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::CurlyTagStart(
-//                 Span::new2(5, 1, 5, 11, 1, 11),
-//                 "{icon ".to_string()
-//             ))
-//         );
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::AttributeName(
-//                 Span::new2(11, 1, 11, 20, 1, 20),
-//                 "bool_attr".to_string()
-//             ))
-//         );
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::AttributeName(
-//                 Span::new2(20, 1, 20, 23, 1, 23),
-//                 "id=".to_string()
-//             ))
-//         );
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::StringValue(
-//                 Span::new2(23, 1, 23, 30, 1, 30),
-//                 "\"ab\\\"c\"".to_string()
-//             ))
-//         );
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::AttributeName(
-//                 Span::new2(30, 1, 30, 35, 1, 35),
-//                 " num=".to_string()
-//             ))
-//         );
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::NumericValue(
-//                 Span::new2(35, 1, 35, 36, 1, 36),
-//                 "1".to_string()
-//             ))
-//         );
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::AttributeName(
-//                 Span::new2(37, 1, 37, 42, 1, 42),
-//                 " val=".to_string()
-//             ))
-//         );
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::NumericValue(
-//                 Span::new2(41, 1, 41, 43, 1, 43),
-//                 ".5".to_string()
-//             ))
-//         );
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::TextMarker(Span::new2(44, 1, 44, 45, 1, 45), ';'))
-//         );
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::InlineText(
-//                 Span::new2(44, 1, 44, 52, 1, 52),
-//                 " text   ".to_string()
-//             ))
-//         );
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::CurlyTagEnd(Span::new2(53, 1, 53, 54, 1, 54)))
-//         );
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::CurlyTagStart(
-//                 Span::new2(53, 1, 53, 58, 1, 58),
-//                 "{end ".to_string()
-//             ))
-//         );
-//         // println!("{:?}", parser);
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::AttributeName(
-//                 Span::new2(59, 1, 59, 62, 1, 62),
-//                 "id=".to_string()
-//             ))
-//         );
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::StringValue(
-//                 Span::new2(61, 1, 61, 64, 1, 64),
-//                 "\"e\"".to_string()
-//             ))
-//         );
-//         assert_eq!(
-//             parser.next(),
-//             Some(RawToken::CurlyTagEnd(
-//                 Span::new2(64, 1, 64, 65, 1, 65)
-//             ))
-//         );
-//         assert_eq!(parser.next(), None);
-//     }
-// }

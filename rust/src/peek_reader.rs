@@ -36,7 +36,7 @@ impl PeekReader {
 
     pub fn peek_string(&self, from: isize, to: isize) -> String {
         let mut ans = String::new();
-        for i in from..(to+1) {
+        for i in from..(to + 1) {
             ans.push(self.peek(i));
         }
         ans

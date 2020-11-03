@@ -539,7 +539,6 @@ fn parse_numeric_value_3() {
     );
 }
 
-
 #[test]
 fn parse_code_block_1() {
     let mut input = quick_input("```` qdasd sd{dsads} ``````` fd53<4|````");
@@ -548,7 +547,7 @@ fn parse_code_block_1() {
     assert_eq!(
         ans,
         Ok(Token::CodeBlock(
-            Span::new2(0,1,0,0,1,0),
+            Span::new2(0, 1, 0, 0, 1, 0),
             "```` qdasd sd{dsads} ``````` fd53<4|````".to_string(),
             " qdasd sd{dsads} ``````` fd53<4|".to_string(),
         ))
@@ -997,14 +996,11 @@ fn parse_next_token_4() {
     assert_eq!(ans, Token::PointyTagTail(Span::new2(0, 1, 0, 0, 1, 0), '|'));
 }
 
-
 #[test]
 fn parse_next_token_5() {
-    let mut input = quick_input(
-        "<(t)paragraph|```my `` {code} ```$\\int$|(t)>",
-    );
+    let mut input = quick_input("<(t)paragraph|```my `` {code} ```$\\int$|(t)>");
     let mut state = State::new();
-    
+
     let mut ans = parse_next_token(&mut input, &mut state).unwrap();
     ans.set_span(Span::new());
     assert_eq!(
