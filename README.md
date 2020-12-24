@@ -103,8 +103,11 @@ Specifies where the schema is locate and defines namespaces.
 
 Attributes:
 
-  * `ns` (optional): string with the namespace prefix.
-  * `!href` (optional): the location where the schema is available.
+  * `ns` (required): string with the namespace prefix. (is empty for the default/main namespace)
+  * `href` (optional): the URL where the schema is available.
+  * `uid` (optional): the unique identifier of this namespace.
+
+At least one of `!href` and `uid` must be present.
 
 ### `!root`
 
@@ -116,8 +119,7 @@ Indicates that another file is to be included. By default, it is included as if 
 
 Attributes:
 
-  * `!id` (optional)
-  * `src` (required): string with a file path
+  * `src` (required): string with a file URI.
   * `parse` (optional): if `true`, will parse the referenced file as CPTML.
 
 Note: by default `!include` nodes won't appear on the tree and won't be considered when processing tree paths.
@@ -129,11 +131,19 @@ Represents a text node. It is essentially a "virtual element" used to simplify t
 Attributes:
 
   * `val`: the textual data as a string including only the relevant whitespace.
-  * `kind`: one of the following values `"inline"`, `"fenced"`, `"math-inline"`, `"math-display"`, `"comment"`.
+  * `fencing`: number of $ (dollar signs) used in the text
+
+### `!whitespace`
+
+Respresents irrelevant whitespace, basically a "virtual" element to simplify the API.
+
+Attributes:
+
+  * `val`: the whitespace deemed irrelevant as a string.
 
 ## Special Attributes
 
-Any regular elements may have the following attributes which work across name spaces.
+Any regular elements may have the following attributes which work across namespaces.
 
   * `!id`: equivalent of `xml:id`
   * `!lang`: equivalent of `xml:lang`
