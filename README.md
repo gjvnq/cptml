@@ -13,7 +13,9 @@ CPTML = Curly & Pointy Tags Markup Language
   * Overlapping markup support via multiple trees/views.
   * Text and comments show as special elements on the tree/API.
   * C-style escape sequences. (no XML entities nonsense)
-  * Nice syntax for escaped text: ```` ``` ```` (for code blocks), ```$$``` (for LaTeX display math) and ```$``` (for LaTeX inline math).
+  * Nice syntax for escaped text: ````$$$```` (for code blocks), ```$$``` (for LaTeX display math) and ```$``` (for LaTeX inline math).
+  * Can include the language name in code blocks: ```$$$rust```
+  * First character of escaped text is ignored if it is a space (U+0020). Example: ```$ $``` produces nothing, ```$ $$``` produces ```$```, ```$  $$``` produces ``` $```. (This is useful for escaping LaTeX code)
 
 ## Examples
 
@@ -58,7 +60,7 @@ Text source: https://en.wikipedia.org/wiki/Overlapping_markup#Milestones
 ```cptml
 {p; The quadratic formula is below:}
 
-$$ \frac{-b\pm\sqrt{b^2-4ac}}{2a} $$
+$$\frac{-b\pm\sqrt{b^2-4ac}}{2a}$$
 ```
 
 ## Escape sequences
@@ -146,13 +148,13 @@ The following selectors are available:
 * `..`: parent of the context node.
 * `*`: all children of the context node (except `!text`).
 * `node()`, `**`: all children of the context node including text.
-* `text()`: all text children of the context node.
+* `text()`: all text children of the context node (includes escaped text).
 * `inner-text()`: a single string with all the text under the context node.
 * `tag`: all child elements with a name matching the `tag`.
 * `@name`: attribute `name` of the context node.
 * `@*`: all attributes of the context node.
 * `/`: root element when used at the start of a path.
-* `//`: all descendants of the root when used at the start of a path.
+* `///`: all descendants of the root.
 * `//`: all descendants of the context node.
 
 The following basic filters are supported:
