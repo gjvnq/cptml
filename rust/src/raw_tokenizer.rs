@@ -46,12 +46,10 @@ impl Eq for Number {}
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RawToken {
     // (span, raw, parsed)
-    CodeBlock(Span, String, String),
     Whitespace(Span, String, String),
     TextMarker(Span, char),
     InlineText(Span, String, String),
-    InlineMathText(Span, String, String),
-    DisplayMathText(Span, String, String),
+    LiteralText(Span, String, String, i16, String), // number of $, language, actual text
     AttributeName(Span, String, BasicName),
     NumericValue(Span, String, Number),
     StringValue(Span, String, String),
@@ -63,17 +61,13 @@ pub enum RawToken {
 
 impl RawToken {
     pub fn set_span(&mut self, new_span: Span) {
-        if let RawToken::CodeBlock(ref mut span, _, _) = self {
-            *span = new_span;
-        } else if let RawToken::Whitespace(ref mut span, _, _) = self {
+        if let RawToken::Whitespace(ref mut span, _, _) = self {
             *span = new_span;
         } else if let RawToken::TextMarker(ref mut span, _) = self {
             *span = new_span;
         } else if let RawToken::InlineText(ref mut span, _, _) = self {
             *span = new_span;
-        } else if let RawToken::InlineMathText(ref mut span, _, _) = self {
-            *span = new_span;
-        } else if let RawToken::DisplayMathText(ref mut span, _, _) = self {
+        } else if let RawToken::LiteralText(ref mut span, _, _, _, _) = self {
             *span = new_span;
         } else if let RawToken::AttributeName(ref mut span, _, _) = self {
             *span = new_span;
@@ -99,12 +93,11 @@ impl RawToken {
 enum Mode {
     Default,
     StartOfInput,
-    CodeBlock,
     TextMarker,
     WhitespaceAttrName,
     Tag,
     InlineText,
-    Math,
+    Literal,
     AttributeName,
     NumericValue,
     StringValue,
@@ -159,8 +152,7 @@ fn next_state(src: &mut PeekReader, state: &mut State) -> Option<ParserError> {
         state.mode = match state.mode {
             Mode::StartOfInput | Mode::Default => match pop_c {
                 '{' | '}' | '<' | '|' => Mode::Tag,
-                '$' => Mode::Math,
-                _ if next_three == "```" => Mode::CodeBlock,
+                '$' => Mode::Literal,
                 _ => Mode::InlineText,
             },
             Mode::TextMarker => Mode::Default,
@@ -168,7 +160,7 @@ fn next_state(src: &mut PeekReader, state: &mut State) -> Option<ParserError> {
             Mode::Tag => match pop_c {
                 ';' => Mode::TextMarker,
                 '{' | '}' | '<' | '|' | '>' => Mode::Tag,
-                _ if next_three == "```" => Mode::CodeBlock,
+                '$' => Mode::Literal,
                 pop_c if pop_c.is_whitespace() => match state.inside_tag {
                     TagType::NotTag => Mode::Default,
                     _ => Mode::WhitespaceAttrName,
@@ -199,8 +191,7 @@ fn next_state(src: &mut PeekReader, state: &mut State) -> Option<ParserError> {
                     ))
                 }
             },
-            Mode::CodeBlock => Mode::Default,
-            Mode::Math => Mode::Default,
+            Mode::Literal => Mode::Default,
         };
         if state.mode != Mode::Default {
             break;
@@ -210,51 +201,79 @@ fn next_state(src: &mut PeekReader, state: &mut State) -> Option<ParserError> {
     return None;
 }
 
-fn parse_code_block(src: &mut PeekReader, state: &mut State) -> Result<RawToken, ParserError> {
-    state.mode = Mode::CodeBlock;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LiteralParsingSubstate {
+    InitialCount,
+    Language,
+    Value,
+    Counting
+}
+
+fn parse_literal(src: &mut PeekReader, state: &mut State) -> Result<RawToken, ParserError> {
+    state.mode = Mode::Literal;
+    let mut substate = LiteralParsingSubstate::InitialCount;
     let mut start_num = 0;
-    let mut finished_start = false;
-    let mut counting = false;
     let mut counter = 0;
+    let mut lang = String::new();
     let mut raw = String::new();
     let mut val = String::new();
 
     loop {
-        let pop_c = src.peek(1);
-        if !finished_start {
-            if pop_c == '`' {
-                start_num += 1;
-            } else {
-                finished_start = true;
-                val.push(pop_c);
-            }
-        } else if counting {
-            if pop_c == '`' {
-                counter += 1;
-            } else {
-                if counter == start_num {
+        let mut pop = true;
+        let c = src.peek(1);
+        match substate {
+            LiteralParsingSubstate::InitialCount => {
+                if c == '$' {
+                    start_num += 1;
+                } else {
+                    substate = LiteralParsingSubstate::Language;
+                    pop = false;
+                }
+            },
+            LiteralParsingSubstate::Language => {
+                if c.is_whitespace() {
+                    substate = LiteralParsingSubstate::Value;
+                } else if c == '$' {
+                    substate = LiteralParsingSubstate::Counting;
+                    counter = 1;
+                } else {
+                    pop = true;
+                    lang.push(c);
+                }
+            },
+            LiteralParsingSubstate::Value => {
+                if c == '$' {
+                    substate = LiteralParsingSubstate::Counting;
+                    counter = 1;
+                } else {
+                    val.push(c);
+                }
+            },
+            LiteralParsingSubstate::Counting => {
+                if c == '$' {
+                    counter += 1;
+                } else if counter == start_num {
                     break;
+                } else {
+                    for _ in 0..counter {
+                        val.push('$');
+                    }
+                    substate = LiteralParsingSubstate::Value;
+                    pop = false;
                 }
-                // add "missing" backticks
-                for _ in 0..counter {
-                    val.push('`');
-                }
-                counting = false;
-                counter = 0;
-                val.push(pop_c);
-            }
-        } else {
-            if pop_c == '`' {
-                counting = true;
-                counter = 1;
-            } else {
-                val.push(pop_c);
             }
         }
-        raw.push(src.pop());
+
+        if pop {
+            raw.push(src.pop());
+        }
     }
 
-    Ok(RawToken::CodeBlock(Span::new(), raw, val))
+    if val.len() == 0 {
+        std::mem::swap(&mut val, &mut lang);
+    }
+
+    Ok(RawToken::LiteralText(Span::new(), raw, val, start_num, lang))
 }
 
 fn parse_text_marker(src: &mut PeekReader, state: &mut State) -> Result<RawToken, ParserError> {
@@ -270,47 +289,6 @@ fn parse_text_marker(src: &mut PeekReader, state: &mut State) -> Result<RawToken
             pop_c,
             vec![';'],
         ));
-    }
-}
-
-fn parse_math(src: &mut PeekReader, state: &mut State) -> Result<RawToken, ParserError> {
-    state.mode = Mode::Math;
-    let (pop_c, next_c) = (src.peek(1), src.peek(2));
-    let mut raw = String::new();
-    let mut val = String::new();
-
-    if pop_c == '$' && next_c == '$' {
-        raw.push(src.pop());
-        raw.push(src.pop());
-    } else if pop_c == '$' {
-        raw.push(src.pop());
-    } else {
-        return Err(ParserError::IllegalChar2(
-            src.get_pos(),
-            pop_c,
-            vec!['$'],
-        ));
-    }
-    state.mode = Mode::Math;
-
-    let long_math = next_c == '$';
-
-    loop {
-        let (pop_c, next_c) = (src.peek(1), src.peek(2));
-        raw.push(src.pop());
-        if long_math && pop_c == '$' && next_c == '$' {
-            raw.push(src.pop());
-            break;
-        }
-        if !long_math && pop_c == '$' {
-            break;
-        }
-        val.push(pop_c);
-    }
-
-    match long_math {
-        true => Ok(RawToken::DisplayMathText(Span::new(), raw, val)),
-        false => Ok(RawToken::InlineMathText(Span::new(), raw, val)),
     }
 }
 
@@ -785,9 +763,8 @@ fn parse_next_token(src: &mut PeekReader, state: &mut State) -> Result<RawToken,
             Mode::Default => unreachable!(),
             Mode::InlineText => parse_inline_text,
             Mode::WhitespaceAttrName => parse_whitespace,
-            Mode::CodeBlock => parse_code_block,
+            Mode::Literal => parse_literal,
             Mode::TextMarker => parse_text_marker,
-            Mode::Math => parse_math,
             Mode::Tag => parse_tag,
             Mode::AttributeName => parse_attr_name,
             Mode::StringValue => parse_string_value,
