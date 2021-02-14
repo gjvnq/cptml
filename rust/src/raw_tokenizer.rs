@@ -667,7 +667,6 @@ fn parse_string_value(src: &mut PeekReader, state: &mut State) -> Result<RawToke
 
     loop {
         let (pop_c, next_c) = (src.peek(1), src.peek(2));
-        println!("pop_c={:?} mode={:?}", pop_c, mode);
         if pop_c == '\0' {
             return Err(ParserError::IllegalChar2(src.get_pos(), pop_c, vec!['"']));
         }
