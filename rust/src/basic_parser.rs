@@ -1,76 +1,222 @@
 #![allow(dead_code)]
 
 use crate::errors::ParserError;
-use std::collections::HashMap;
 use crate::peek_reader::PeekReader;
-use crate::raw_tokenizer::BasicName;
-use crate::raw_tokenizer::RawTokenizer;
-
+use crate::pos::{Position, Span};
+use crate::raw_tokenizer::Number;
+use crate::raw_tokenizer::{BasicName, RawToken, RawTokenizer};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TagType {
-	CurlyFull,
+    CurlyFull,
     CurlyStart,
     CurlyEnd,
     PointyFull,
     PointyStart,
     PointyEnd,
+    Virtual,
 }
 
 impl TagType {
-	pub fn is_pointy(&self) -> bool {
-		match self {
-			TagType::PointyFull | TagType::PointyStart | TagType::PointyEnd => true,
-			_ => false
-		}
-	}
-	pub fn is_curly(&self) -> bool {
-		match self {
-			TagType::CurlyFull | TagType::CurlyStart | TagType::CurlyEnd => true,
-			_ => false
-		}
-	}
+    pub fn is_pointy(&self) -> bool {
+        match self {
+            TagType::PointyFull | TagType::PointyStart | TagType::PointyEnd => true,
+            _ => false,
+        }
+    }
+    pub fn is_curly(&self) -> bool {
+        match self {
+            TagType::CurlyFull | TagType::CurlyStart | TagType::CurlyEnd => true,
+            _ => false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AttrValue {
+    String(String),
+    Integer(i64),
+    Float(f64),
+}
+
+impl Eq for AttrValue {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Attr {
+    name: BasicName,
+    val: AttrValue
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tag {
-	name: BasicName,
-	kind: TagType,
-	raw: String
+    name: BasicName,
+    kind: TagType,
+    raw: String,
+    attrs: Vec<Attr>,
+    span: Span,
 }
 
 #[derive(Debug)]
 pub struct BasicParser {
-	show_full_prefix: bool,
-	views: HashMap<String,usize>, // 0 is reserved for curly
-	stacks: Vec<Vec<BasicName>>, // 0 is the curly tag stack
-	tokenizer: RawTokenizer
+    show_full_prefix: bool,
+    views: HashMap<String, usize>, // 0 is reserved for curly
+    stacks: Vec<Vec<BasicName>>,   // 0 is the curly tag stack
+    tokenizer: RawTokenizer,
 }
 
 impl BasicParser {
-	pub fn new(src: Box<PeekReader>) -> BasicParser {
-		let tokenizer = RawTokenizer::new(src);
-		BasicParser {
-			show_full_prefix: false,
-			views: HashMap::new(),
-			stacks: vec![vec![]],
-			tokenizer: tokenizer
+    pub fn new(src: Box<PeekReader>) -> BasicParser {
+        let tokenizer = RawTokenizer::new(src);
+        BasicParser {
+            show_full_prefix: false,
+            views: HashMap::new(),
+            stacks: vec![vec![]],
+            tokenizer: tokenizer,
+        }
+    }
+
+    fn add_view(&mut self, prefix: &str) {
+        let n = self.views.len() + 1;
+        self.views.insert(prefix.to_string(), n);
+    }
+
+    fn view_to_index(&self, prefix: &str) -> Option<usize> {
+        match self.views.get(prefix) {
+            Some(v) => Some(*v),
+            None => None,
+        }
+    }
+
+    fn process_text(&mut self, span: Span, raw: String, val: String) -> Result<Tag, ParserError> {
+        Ok(Tag {
+            name: BasicName::new("", true, "", "text"),
+            kind: TagType::Virtual,
+            raw: raw,
+            span: span,
+            attrs: vec![Attr {
+                name: BasicName::new("", true, "", "val"),
+                val: AttrValue::String(val),
+            }],
+        })
+    }
+
+    fn process_curly_tag(
+        &mut self,
+        span: Span,
+        raw: String,
+        name: BasicName,
+    ) -> Result<Tag, ParserError> {
+    	let mut tag_raw = raw.clone();
+    	let mut tag_span = span;
+        let mut tag = Tag {
+            name: name,
+            kind: TagType::CurlyStart,
+            raw: "".to_string(),
+            span: Span::new(),
+            attrs: vec![],
+        };
+
+        // Process arguments if any
+        let mut token = self.tokenizer.next();
+        'outer: loop {
+            let attr_name: BasicName;
+            let attr_val: AttrValue;
+            // Get attribute name or get out
+            loop {
+                println!("B: {:?}", token);
+                match token {
+                    Ok(RawToken::AttributeName(span, raw, name)) => {
+                        attr_name = name;
+                        tag_raw += &raw;
+                        tag_span.end = span.end;
+                        break;
+                    }
+                    Ok(RawToken::Whitespace(span, raw, _)) => {
+                        tag_raw += &raw;
+                        tag_span.end = span.end;
+                        token = self.tokenizer.next();
+                    }
+                    Ok(_) => break 'outer,
+                    Err(err) => return Err(err),
+                };
+            }
+            // Get attribute value
+            token = self.tokenizer.next();
+            println!("C: {:?}", token);
+            match token {
+                Ok(RawToken::NumericValue(_, raw, num)) => {
+                    attr_val = match num {
+                        Number::Integer(num) => AttrValue::Integer(num),
+                        Number::Float(num) => AttrValue::Float(num),
+                    };
+                    tag_raw += &raw;
+                        tag_span.end = span.end;
+                }
+                Ok(RawToken::StringValue(_, raw, val)) => {
+                    attr_val = AttrValue::String(val);
+                    tag_raw += &raw;
+                        tag_span.end = span.end;
+                }
+                Ok(tok) => {
+                    return Err(ParserError::NotAttributeValue(
+                        tok.get_span(),
+                        tok.get_raw(),
+                    ))
+                }
+                Err(err) => return Err(err),
+            };
+            tag.attrs.push(Attr {
+                name: attr_name,
+                val: attr_val,
+            });
+            token = self.tokenizer.next();
+        }
+
+        // See where to stop
+        loop {
+		    match token {
+		    	Ok(RawToken::Whitespace(span, raw, _)) => {
+		    		tag_raw += &raw;
+		            tag_span.end = span.end;
+		    	},
+		    	Ok(RawToken::TextMarker(span, c)) => {
+		    		tag_raw += &c.to_string();
+		            tag_span.end = span.end;
+		            break;
+		    	},
+		    	Ok(RawToken::CurlyTagEnd(span, c)) => {
+		    		tag_raw += &c.to_string();
+		            tag_span.end = span.end;
+		            tag.kind = TagType::CurlyFull;
+		            break;
+		    	},
+		    	_ => {
+		    		self.tokenizer.unnext();
+		    		break;
+		    	}
+		    };
+		    token = self.tokenizer.next();
 		}
-	}
 
-	fn add_view(&mut self, prefix: &str) {
-		let n = self.views.len() + 1;
-		self.views.insert(prefix.to_string(), n);
-	}
+		tag.span = tag_span;
+		tag.raw = tag_raw;
 
-	fn view_to_index(&self, prefix: &str) -> Option<usize> {
-		match self.views.get(prefix) {
-			Some(v) => Some(*v),
-			None => None
-		}
-	}
+        Ok(tag)
+    }
 
-	pub fn next(&mut self) -> Result<Tag, ParserError> {
-		unimplemented!()
-	}
+    pub fn next(&mut self) -> Result<Tag, ParserError> {
+        let token = self.tokenizer.next();
+        println!("A: {:?}", token);
+        match token {
+            Err(err) => Err(err),
+            Ok(RawToken::InlineText(span, raw, val)) => self.process_text(span, raw, val),
+            Ok(RawToken::CurlyTagStart(span, raw, name)) => self.process_curly_tag(span, raw, name),
+            _ => unimplemented!(),
+        }
+    }
 }
+
+#[cfg(test)]
+#[path = "basic_parser_test.rs"]
+mod tests;

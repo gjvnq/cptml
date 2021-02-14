@@ -751,14 +751,14 @@ fn parse_numeric_value(src: &mut PeekReader, state: &mut State) -> Result<RawTok
 
     loop {
         let pop_c = src.peek(1);
-        if pop_c == '\0' || pop_c == '}' || pop_c == ';' || pop_c == '>' || pop_c == '|' {
+        if pop_c.is_whitespace() || pop_c == '\0' || pop_c == '}' || pop_c == ';' || pop_c == '>' || pop_c == '|' {
             break;
         }
         if pop_c == '_' {
             // do nothing
         } else if pop_c.is_ascii_digit() {
             buf.push(pop_c);
-        } else if dot == false && pop_c == '.' {
+        } else if dot == false && (pop_c == '.' || pop_c == ',') {
             dot = true;
             buf.push('.');
         } else {
@@ -773,6 +773,7 @@ fn parse_numeric_value(src: &mut PeekReader, state: &mut State) -> Result<RawTok
     }
     span.end = src.get_pos();
 
+    // TODO: remove f64 and have i64 pair for value and decimal places
     if dot {
         match buf.parse::<f64>() {
             Ok(v) => return Ok(RawToken::NumericValue(Span::new(), raw, Number::Float(v))),

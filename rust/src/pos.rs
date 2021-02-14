@@ -39,6 +39,13 @@ impl Span {
         }
     }
 
+    pub fn new_from_to(start: Position, end: Position) -> Self {
+        Span {
+            start: start,
+            end: end,
+        }
+    }
+
     pub fn step(&mut self, c: char) {
         self.end.step(c)
     }

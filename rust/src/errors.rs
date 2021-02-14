@@ -10,5 +10,7 @@ pub enum ParserError {
     MissingLocalName(Position),
     IllegalEscapeSequence(Position, String),
     IllegalNumber(Span, String),
+    NotAttributeValue(Span, String),
+    NotReadyYet,
     EndOfInput,
 }
