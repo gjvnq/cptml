@@ -5,7 +5,7 @@ use crate::hacks::u32_to_char;
 
 use crate::errors::ParserError;
 use crate::peek_reader::PeekReader;
-use crate::pos::Position;
+
 use crate::pos::Span;
 use core::fmt::Debug;
 
@@ -18,7 +18,15 @@ pub struct BasicName {
 }
 
 impl BasicName {
-    fn new() -> BasicName {
+    pub fn new(view: &str, special: bool, prefix: &str, local: &str) -> BasicName {
+        BasicName {
+            view: view.to_string(),
+            special: special,
+            prefix: prefix.to_string(),
+            local: local.to_string(),
+        }
+    }
+    pub fn new_empty() -> BasicName {
         BasicName {
             view: "".to_string(),
             special: false,
@@ -26,12 +34,6 @@ impl BasicName {
             local: "".to_string(),
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DualString {
-    raw: String,
-    parsed: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -62,6 +64,42 @@ pub enum RawToken {
 }
 
 impl RawToken {
+    pub fn get_raw(&self) -> String {
+        match self {
+            RawToken::CodeBlock(_, raw, _) => raw.to_string(),
+            RawToken::Whitespace(_, raw, _) => raw.to_string(),
+            RawToken::TextMarker(_, raw_c) => raw_c.to_string(),
+            RawToken::InlineText(_, raw, _) => raw.to_string(),
+            RawToken::InlineMathText(_, raw, _) => raw.to_string(),
+            RawToken::DisplayMathText(_, raw, _) => raw.to_string(),
+            RawToken::AttributeName(_, raw, _) => raw.to_string(),
+            RawToken::NumericValue(_, raw, _) => raw.to_string(),
+            RawToken::StringValue(_, raw, _) => raw.to_string(),
+            RawToken::CurlyTagStart(_, raw, _) => raw.to_string(),
+            RawToken::CurlyTagEnd(_, raw_c) => raw_c.to_string(),
+            RawToken::PointyTagHead(_, raw, _) => raw.to_string(),
+            RawToken::PointyTagTail(_, raw_c) => raw_c.to_string(),
+        }
+    }
+
+    pub fn get_span(&self) -> Span {
+        match self {
+            RawToken::CodeBlock(span, _, _) => *span,
+            RawToken::Whitespace(span, _, _) => *span,
+            RawToken::TextMarker(span, _) => *span,
+            RawToken::InlineText(span, _, _) => *span,
+            RawToken::InlineMathText(span, _, _) => *span,
+            RawToken::DisplayMathText(span, _, _) => *span,
+            RawToken::AttributeName(span, _, _) => *span,
+            RawToken::NumericValue(span, _, _) => *span,
+            RawToken::StringValue(span, _, _) => *span,
+            RawToken::CurlyTagStart(span, _, _) => *span,
+            RawToken::CurlyTagEnd(span, _) => *span,
+            RawToken::PointyTagHead(span, _, _) => *span,
+            RawToken::PointyTagTail(span, _) => *span,
+        }
+    }
+
     pub fn set_span(&mut self, new_span: Span) {
         if let RawToken::CodeBlock(ref mut span, _, _) = self {
             *span = new_span;
@@ -175,7 +213,11 @@ fn next_state(src: &mut PeekReader, state: &mut State) -> Option<ParserError> {
                 },
                 _ => Mode::Default,
             },
-            Mode::WhitespaceAttrName => Mode::AttributeName,
+            Mode::WhitespaceAttrName => match pop_c {
+                    ';' => Mode::TextMarker,
+                    '}' | '|' | '>' => Mode::Tag,
+                    _ => Mode::AttributeName
+                },
             Mode::AttributeName => match pop_c {
                 '0'..='9' => Mode::NumericValue,
                 '"' => Mode::StringValue,
@@ -265,11 +307,7 @@ fn parse_text_marker(src: &mut PeekReader, state: &mut State) -> Result<RawToken
         src.pop();
         return Ok(RawToken::TextMarker(Span::new(), pop_c));
     } else {
-        return Err(ParserError::IllegalChar2(
-            src.get_pos(),
-            pop_c,
-            vec![';'],
-        ));
+        return Err(ParserError::IllegalChar2(src.get_pos(), pop_c, vec![';']));
     }
 }
 
@@ -285,11 +323,7 @@ fn parse_math(src: &mut PeekReader, state: &mut State) -> Result<RawToken, Parse
     } else if pop_c == '$' {
         raw.push(src.pop());
     } else {
-        return Err(ParserError::IllegalChar2(
-            src.get_pos(),
-            pop_c,
-            vec!['$'],
-        ));
+        return Err(ParserError::IllegalChar2(src.get_pos(), pop_c, vec!['$']));
     }
     state.mode = Mode::Math;
 
@@ -475,7 +509,7 @@ fn parse_tag(src: &mut PeekReader, state: &mut State) -> Result<RawToken, Parser
     state.mode = Mode::Tag;
 
     let pop_c = src.peek(1);
-    let mut name = BasicName::new();
+    let mut name = BasicName::new_empty();
     let mut first = true;
     let mut raw_name = "".to_string();
     let mut has_view = false;
@@ -495,13 +529,13 @@ fn parse_tag(src: &mut PeekReader, state: &mut State) -> Result<RawToken, Parser
         return Ok(RawToken::PointyTagTail(Span::new(), src.pop()));
     }
     let ans_kind = match pop_c {
-        '{' => RawToken::CurlyTagStart(Span::new(), String::new(), BasicName::new()),
+        '{' => RawToken::CurlyTagStart(Span::new(), String::new(), BasicName::new_empty()),
         '}' => RawToken::CurlyTagEnd(Span::new(), '}'),
-        '<' => RawToken::PointyTagHead(Span::new(), String::new(), BasicName::new()),
+        '<' => RawToken::PointyTagHead(Span::new(), String::new(), BasicName::new_empty()),
         '>' => RawToken::PointyTagTail(Span::new(), '>'),
         '|' => match state.inside_tag {
             TagType::PointyTag => RawToken::PointyTagTail(Span::new(), '|'),
-            _ => RawToken::PointyTagHead(Span::new(), String::new(), BasicName::new()),
+            _ => RawToken::PointyTagHead(Span::new(), String::new(), BasicName::new_empty()),
         },
         _ => {
             return Err(ParserError::IllegalChar2(
@@ -579,7 +613,7 @@ fn parse_tag(src: &mut PeekReader, state: &mut State) -> Result<RawToken, Parser
 fn parse_attr_name(src: &mut PeekReader, state: &mut State) -> Result<RawToken, ParserError> {
     state.mode = Mode::AttributeName;
 
-    let mut name = BasicName::new();
+    let mut name = BasicName::new_empty();
     let mut raw_name = "".to_string();
     let start_pos = src.get_pos();
     let mut first = true;
@@ -627,11 +661,7 @@ fn parse_string_value(src: &mut PeekReader, state: &mut State) -> Result<RawToke
 
     // Check start char
     if pop_c != '"' {
-        return Err(ParserError::IllegalChar2(
-            src.get_pos(),
-            pop_c,
-            vec!['"'],
-        ));
+        return Err(ParserError::IllegalChar2(src.get_pos(), pop_c, vec!['"']));
     }
     raw_val.push(src.pop());
 
@@ -639,11 +669,7 @@ fn parse_string_value(src: &mut PeekReader, state: &mut State) -> Result<RawToke
         let (pop_c, next_c) = (src.peek(1), src.peek(2));
         println!("pop_c={:?} mode={:?}", pop_c, mode);
         if pop_c == '\0' {
-            return Err(ParserError::IllegalChar2(
-                src.get_pos(),
-                pop_c,
-                vec!['"'],
-            ));
+            return Err(ParserError::IllegalChar2(src.get_pos(), pop_c, vec!['"']));
         }
         if mode == TextEscapeState::Normal {
             if pop_c == '"' {
@@ -812,6 +838,8 @@ fn parse_next_token(src: &mut PeekReader, state: &mut State) -> Result<RawToken,
 pub struct RawTokenizer {
     src: Box<PeekReader>,
     state: State,
+    reout: bool,
+    last_output: Result<RawToken, ParserError>,
 }
 
 impl RawTokenizer {
@@ -819,10 +847,20 @@ impl RawTokenizer {
         RawTokenizer {
             src: src,
             state: State::new(),
+            reout: false,
+            last_output: Err(ParserError::NotReadyYet),
         }
     }
     pub fn next(&mut self) -> Result<RawToken, ParserError> {
-        parse_next_token(&mut self.src, &mut self.state)
+        if self.reout {
+            self.reout = false;
+            return self.last_output.clone();
+        }
+        self.last_output = parse_next_token(&mut self.src, &mut self.state);
+        return self.last_output.clone();
+    }
+    pub fn unnext(&mut self) {
+        self.reout = true;
     }
 }
 
