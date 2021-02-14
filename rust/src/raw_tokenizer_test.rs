@@ -443,10 +443,10 @@ fn parse_string_value_1() {
     let ans = parse_string_value(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(RawToken::StringValue(
+        Ok(RawToken::AttributeValue(
             Span::new(),
             "\"\"".to_string(),
-            "".to_string()
+            AttrValue::String("".to_string())
         ))
     );
 }
@@ -458,10 +458,10 @@ fn parse_string_value_2() {
     let ans = parse_string_value(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(RawToken::StringValue(
+        Ok(RawToken::AttributeValue(
             Span::new(),
             "\"abc\"".to_string(),
-            "abc".to_string()
+            AttrValue::String("abc".to_string())
         ))
     );
 }
@@ -473,10 +473,10 @@ fn parse_string_value_3() {
     let ans = parse_string_value(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(RawToken::StringValue(
+        Ok(RawToken::AttributeValue(
             Span::new(),
             "\"\\\"\"".to_string(),
-            "\"".to_string()
+            AttrValue::String("\"".to_string())
         ))
     );
 }
@@ -488,10 +488,10 @@ fn parse_string_value_4() {
     let ans = parse_string_value(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(RawToken::StringValue(
+        Ok(RawToken::AttributeValue(
             Span::new(),
             "\"\\u222B;\"".to_string(),
-            "∫".to_string()
+            AttrValue::String("∫".to_string())
         ))
     );
 }
@@ -503,25 +503,25 @@ fn parse_numeric_value_1() {
     let ans = parse_numeric_value(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(RawToken::NumericValue(
+        Ok(RawToken::AttributeValue(
             Span::new(),
             "1_000".to_string(),
-            Number::Integer(1000)
+            AttrValue::Number(1000, 0)
         ))
     );
 }
 
 #[test]
 fn parse_numeric_value_2() {
-    let mut input = quick_input("1_000.3__4");
+    let mut input = quick_input("1_000,3__4");
     let mut state = State::new();
     let ans = parse_numeric_value(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(RawToken::NumericValue(
+        Ok(RawToken::AttributeValue(
             Span::new(),
-            "1_000.3__4".to_string(),
-            Number::Float(1000.34)
+            "1_000,3__4".to_string(),
+            AttrValue::Number(100034, 2)
         ))
     );
 }
@@ -736,10 +736,10 @@ fn parse_next_token_2() {
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(RawToken::StringValue(
+        Ok(RawToken::AttributeValue(
             Span::new2(12, 2, 4, 18, 2, 10),
             "\"elem\"".to_string(),
-            "elem".to_string(),
+            AttrValue::String("elem".to_string()),
         ))
     );
     let ans = parse_next_token(&mut input, &mut state);
@@ -768,10 +768,10 @@ fn parse_next_token_2() {
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(RawToken::NumericValue(
+        Ok(RawToken::AttributeValue(
             Span::new2(23, 2, 15, 28, 2, 20),
             "3._14".to_string(),
-            Number::Float(3.14)
+            AttrValue::Number(314, 2)
         ))
     );
 
@@ -842,10 +842,10 @@ fn parse_next_token_3() {
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(RawToken::StringValue(
+        Ok(RawToken::AttributeValue(
             Span::new2(12, 2, 4, 18, 2, 10),
             "\"elem\"".to_string(),
-            "elem".to_string(),
+            AttrValue::String("elem".to_string()),
         ))
     );
     let ans = parse_next_token(&mut input, &mut state);
@@ -874,10 +874,10 @@ fn parse_next_token_3() {
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(RawToken::NumericValue(
+        Ok(RawToken::AttributeValue(
             Span::new2(23, 2, 15, 28, 2, 20),
             "3._14".to_string(),
-            Number::Float(3.14)
+            AttrValue::Number(314, 2)
         ))
     );
 
@@ -946,10 +946,10 @@ fn parse_next_token_3b() {
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(RawToken::StringValue(
+        Ok(RawToken::AttributeValue(
             Span::new2(12, 2, 4, 18, 2, 10),
             "\"elem\"".to_string(),
-            "elem".to_string(),
+            AttrValue::String("elem".to_string()),
         ))
     );
     let ans = parse_next_token(&mut input, &mut state);
@@ -978,10 +978,10 @@ fn parse_next_token_3b() {
     let ans = parse_next_token(&mut input, &mut state);
     assert_eq!(
         ans,
-        Ok(RawToken::NumericValue(
+        Ok(RawToken::AttributeValue(
             Span::new2(23, 2, 15, 28, 2, 20),
             "3._14".to_string(),
-            Number::Float(3.14)
+            AttrValue::Number(314, 2)
         ))
     );
 

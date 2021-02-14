@@ -55,7 +55,7 @@ fn test_tag_1() {
 
 #[test]
 fn test_tag_2() {
-    let input = quick_input("{icon !id=\"hi\\t\" \n n=3014\t}");
+    let input = quick_input("{icon !id=\"hi\\t\" \n n=3,14\t}");
     let mut parser = BasicParser::new(input);
     let ans = parser.next();
     assert_eq!(
@@ -64,13 +64,13 @@ fn test_tag_2() {
             name: BasicName::new("", false, "", "icon"),
             kind: TagType::CurlyFull,
             span: Span::new2(0, 1, 0, 27, 2, 9),
-            raw: "{icon !id=\"hi\\t\" \n n=3014\t}".to_string(),
+            raw: "{icon !id=\"hi\\t\" \n n=3,14\t}".to_string(),
             attrs: vec![Attr{
                 name: BasicName::new("", true, "", "!id"),
                 val: AttrValue::String("hi\t".to_string())
             },Attr{
                 name: BasicName::new("", false, "", "n"),
-                val: AttrValue::Integer(3014)
+                val: AttrValue::Number(314, 2)
             }]
         })
     );

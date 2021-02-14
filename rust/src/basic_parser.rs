@@ -2,8 +2,8 @@
 
 use crate::errors::ParserError;
 use crate::peek_reader::PeekReader;
-use crate::pos::{Position, Span};
-use crate::raw_tokenizer::Number;
+use crate::pos::Span;
+use crate::raw_tokenizer::AttrValue;
 use crate::raw_tokenizer::{BasicName, RawToken, RawTokenizer};
 use std::collections::HashMap;
 
@@ -32,15 +32,6 @@ impl TagType {
         }
     }
 }
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum AttrValue {
-    String(String),
-    Integer(i64),
-    Float(f64),
-}
-
-impl Eq for AttrValue {}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Attr {
@@ -145,16 +136,8 @@ impl BasicParser {
             token = self.tokenizer.next();
             println!("C: {:?}", token);
             match token {
-                Ok(RawToken::NumericValue(_, raw, num)) => {
-                    attr_val = match num {
-                        Number::Integer(num) => AttrValue::Integer(num),
-                        Number::Float(num) => AttrValue::Float(num),
-                    };
-                    tag_raw += &raw;
-                        tag_span.end = span.end;
-                }
-                Ok(RawToken::StringValue(_, raw, val)) => {
-                    attr_val = AttrValue::String(val);
+                Ok(RawToken::AttributeValue(_, raw, val)) => {
+                    attr_val = val;
                     tag_raw += &raw;
                         tag_span.end = span.end;
                 }

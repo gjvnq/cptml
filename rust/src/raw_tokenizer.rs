@@ -36,13 +36,11 @@ impl BasicName {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Number {
-    Integer(i64),
-    Float(f64),
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AttrValue {
+    String(String),
+    Number(i64, u8),
 }
-
-impl Eq for Number {}
 
 // Self Note: when making a tree structure, the original "form" will always be printed if possible (use dirty bit?)
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -55,8 +53,7 @@ pub enum RawToken {
     InlineMathText(Span, String, String),
     DisplayMathText(Span, String, String),
     AttributeName(Span, String, BasicName),
-    NumericValue(Span, String, Number),
-    StringValue(Span, String, String),
+    AttributeValue(Span, String, AttrValue),
     CurlyTagStart(Span, String, BasicName),
     CurlyTagEnd(Span, char),
     PointyTagHead(Span, String, BasicName),
@@ -73,8 +70,7 @@ impl RawToken {
             RawToken::InlineMathText(_, raw, _) => raw.to_string(),
             RawToken::DisplayMathText(_, raw, _) => raw.to_string(),
             RawToken::AttributeName(_, raw, _) => raw.to_string(),
-            RawToken::NumericValue(_, raw, _) => raw.to_string(),
-            RawToken::StringValue(_, raw, _) => raw.to_string(),
+            RawToken::AttributeValue(_, raw, _) => raw.to_string(),
             RawToken::CurlyTagStart(_, raw, _) => raw.to_string(),
             RawToken::CurlyTagEnd(_, raw_c) => raw_c.to_string(),
             RawToken::PointyTagHead(_, raw, _) => raw.to_string(),
@@ -91,8 +87,7 @@ impl RawToken {
             RawToken::InlineMathText(span, _, _) => *span,
             RawToken::DisplayMathText(span, _, _) => *span,
             RawToken::AttributeName(span, _, _) => *span,
-            RawToken::NumericValue(span, _, _) => *span,
-            RawToken::StringValue(span, _, _) => *span,
+            RawToken::AttributeValue(span, _, _) => *span,
             RawToken::CurlyTagStart(span, _, _) => *span,
             RawToken::CurlyTagEnd(span, _) => *span,
             RawToken::PointyTagHead(span, _, _) => *span,
@@ -115,9 +110,7 @@ impl RawToken {
             *span = new_span;
         } else if let RawToken::AttributeName(ref mut span, _, _) = self {
             *span = new_span;
-        } else if let RawToken::NumericValue(ref mut span, _, _) = self {
-            *span = new_span;
-        } else if let RawToken::StringValue(ref mut span, _, _) = self {
+        } else if let RawToken::AttributeValue(ref mut span, _, _) = self {
             *span = new_span;
         } else if let RawToken::CurlyTagStart(ref mut span, _, _) = self {
             *span = new_span;
@@ -738,7 +731,7 @@ fn parse_string_value(src: &mut PeekReader, state: &mut State) -> Result<RawToke
         raw_val.push(src.pop());
     }
 
-    return Ok(RawToken::StringValue(Span::new(), raw_val, val));
+    return Ok(RawToken::AttributeValue(Span::new(), raw_val, AttrValue::String(val)));
 }
 
 fn parse_numeric_value(src: &mut PeekReader, state: &mut State) -> Result<RawToken, ParserError> {
@@ -748,6 +741,7 @@ fn parse_numeric_value(src: &mut PeekReader, state: &mut State) -> Result<RawTok
     let mut raw = "".to_string();
     let mut dot = false;
     let mut span = Span::new_from(src.get_pos());
+    let mut places = 0;
 
     loop {
         let pop_c = src.peek(1);
@@ -758,9 +752,11 @@ fn parse_numeric_value(src: &mut PeekReader, state: &mut State) -> Result<RawTok
             // do nothing
         } else if pop_c.is_ascii_digit() {
             buf.push(pop_c);
+            if dot {
+                places += 1;
+            }
         } else if dot == false && (pop_c == '.' || pop_c == ',') {
             dot = true;
-            buf.push('.');
         } else {
             return Err(ParserError::IllegalCharMsg(
                 src.get_pos(),
@@ -773,18 +769,10 @@ fn parse_numeric_value(src: &mut PeekReader, state: &mut State) -> Result<RawTok
     }
     span.end = src.get_pos();
 
-    // TODO: remove f64 and have i64 pair for value and decimal places
-    if dot {
-        match buf.parse::<f64>() {
-            Ok(v) => return Ok(RawToken::NumericValue(Span::new(), raw, Number::Float(v))),
-            _ => return Err(ParserError::IllegalNumber(span, raw)),
-        };
-    } else {
-        match buf.parse::<i64>() {
-            Ok(v) => return Ok(RawToken::NumericValue(Span::new(), raw, Number::Integer(v))),
-            _ => return Err(ParserError::IllegalNumber(span, raw)),
-        };
-    }
+    match buf.parse::<i64>() {
+        Ok(num) => return Ok(RawToken::AttributeValue(Span::new(), raw, AttrValue::Number(num, places))),
+        _ => return Err(ParserError::IllegalNumber(span, raw)),
+    };
 }
 
 fn parse_next_token(src: &mut PeekReader, state: &mut State) -> Result<RawToken, ParserError> {
