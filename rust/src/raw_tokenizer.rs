@@ -209,6 +209,8 @@ fn next_state(src: &mut PeekReader, state: &mut State) -> Option<ParserError> {
             Mode::WhitespaceAttrName => match pop_c {
                     ';' => Mode::TextMarker,
                     '}' | '|' | '>' => Mode::Tag,
+                    '0'..='9' => Mode::NumericValue,
+                    '"' => Mode::StringValue,
                     _ => Mode::AttributeName
                 },
             Mode::AttributeName => match pop_c {

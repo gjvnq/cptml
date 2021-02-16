@@ -615,6 +615,79 @@ fn parse_math_2() {
     );
 }
 
+
+#[test]
+fn parse_next_token_positional_attribute() {
+    let mut input = quick_input("{emph  1 \"val\"\t}");
+    let mut state = State::new();
+    let ans = parse_next_token(&mut input, &mut state);
+    assert_eq!(
+        ans,
+        Ok(RawToken::CurlyTagStart(
+            Span::new2(0, 1, 0, 5, 1, 5),
+            "{emph".to_string(),
+            BasicName {
+                view: "".to_string(),
+                special: false,
+                prefix: "".to_string(),
+                local: "emph".to_string()
+            }
+        ))
+    );
+    let ans = parse_next_token(&mut input, &mut state);
+    assert_eq!(
+        ans,
+        Ok(RawToken::Whitespace(
+            Span::new2(5, 1, 5, 7, 1, 7),
+            "  ".to_string(),
+            " ".to_string()
+        ))
+    );
+    let ans = parse_next_token(&mut input, &mut state);
+    assert_eq!(
+        ans,
+        Ok(RawToken::AttributeValue(
+            Span::new2(7, 1, 7, 8, 1, 8),
+            "1".to_string(),
+            AttrValue::Number(1, 0)
+        ))
+    );
+    let ans = parse_next_token(&mut input, &mut state);
+    assert_eq!(
+        ans,
+        Ok(RawToken::Whitespace(
+            Span::new2(8,1,8,9,1,9),
+            " ".to_string(),
+            " ".to_string()
+        ))
+    );
+    let ans = parse_next_token(&mut input, &mut state);
+    assert_eq!(
+        ans,
+        Ok(RawToken::AttributeValue(
+            Span::new2(9,1,9,14,1,14),
+            "\"val\"".to_string(),
+            AttrValue::String("val".to_string())
+        ))
+    );
+    let ans = parse_next_token(&mut input, &mut state);
+    assert_eq!(
+        ans,
+        Ok(RawToken::Whitespace(
+            Span::new2(14, 1, 14, 15, 1, 15),
+            "\t".to_string(),
+            " ".to_string()
+        ))
+    );
+    let ans = parse_next_token(&mut input, &mut state);
+    assert_eq!(
+        ans,
+        Ok(RawToken::CurlyTagEnd(Span::new2(15,1,15,16,1,16), '}'))
+    );
+    let ans = parse_next_token(&mut input, &mut state);
+    assert_eq!(ans, Err(ParserError::EndOfInput));
+}
+
 #[test]
 fn parse_next_token_0() {
     let mut input = quick_input("{emph  }");
