@@ -10,7 +10,7 @@ comment = "/*", {comment | ?any character?} ,"*/";
 
 reserved char = "<" | ">" | "{" | "}" | "\" | "|";
 
-whitespace = ?any Unicode Separator (Z)?;
+whitespace = {?any Unicode Separator (Z)?};
 
 safe char = ?any non reserved char?;
 
@@ -40,12 +40,15 @@ string safe char = ?any character other than \ and "?;
 string char = string safe char | escaped char;
 string = '"', {string char}, '"';
 
-simple name = ?XID_START?, {?XID_CONT?};
+simple name = (?ID_Start? | "_"), {?ID_Continue? | "_" | "-"};
+(* Names can end in hyphens and underscores.
+   ZWJ and ZWNJ are currently forbidden *)
 namespace specifier = [simple name], ":";
 (* empty namespaced are used for special things, e.g. <my-tag :id="tag1" :lang="en-EU" />*)
 
 name = [namespace specifier], simple name;
-attribute = name, ["=", number, string];
+attribute = [name, "="], (number | string);
+(* Note that attributes can be positional/nameless but empty HTML-style attributes are not allowed *)
 tree specifier = "(", name, ")";
 tag core = [tree specifier], name, whitespace, { attribute | whitespace | comment };
 curly tag = "{", tag core, [";", {node}], "}";
@@ -58,7 +61,7 @@ pointy end tag = "|", tag core, ">";
 (* pointy end tags MUST have only an :id attribute *)
 
 code language = name, " ";
-(**)
+(* The name of the programming language of the code block. *)
 code block = "`", {"`"}, [code language], ?any character?, "`", {"`"};
 (* The code block only ends at the last continuous back tick is there at least
 as many ending back ticks as starting back ticks.
