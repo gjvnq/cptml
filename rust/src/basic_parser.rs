@@ -39,6 +39,12 @@ pub struct Attr {
     val: AttrValue
 }
 
+impl Attr {
+    pub fn is_named(&self) -> bool {
+        return !self.name.is_empty()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tag {
     name: BasicName,
@@ -46,6 +52,37 @@ pub struct Tag {
     raw: String,
     attrs: Vec<Attr>,
     span: Span,
+}
+
+impl Tag {
+    /// Get Positional Attribute (counts from 1)
+    pub fn get_pos_attr(&self, pos: usize) -> Option<&Attr> {
+        let mut counter = 0;
+        for attr in &self.attrs {
+            if !attr.is_named() {
+                counter += 1;
+            } else if counter == pos {
+                return Some(attr)
+            }
+        }
+        None
+    }
+
+    pub fn get_named_attr(&self, name: &BasicName) -> Option<&Attr> {
+        if name.is_empty() {
+            // Avoid the mistak of getting a positional argument when you want a named one
+            return None
+        }
+        for attr in &self.attrs {
+            if !attr.is_named() {
+                continue
+            }
+            if attr.name == *name {
+                return Some(attr)
+            }
+        }
+        None
+    }
 }
 
 #[derive(Debug)]

@@ -18,6 +18,12 @@ pub struct BasicName {
 }
 
 impl BasicName {
+    pub fn is_empty(&self) -> bool {
+        return self.view.len() == 0 && self.prefix.len() == 0 && self.local.len() == 0
+    }
+}
+
+impl BasicName {
     pub fn new(view: &str, special: bool, prefix: &str, local: &str) -> BasicName {
         BasicName {
             view: view.to_string(),
