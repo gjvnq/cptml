@@ -1,0 +1,67 @@
+document = { node } ;
+node = tag | text | code block | comment;
+text = char, { char };
+char = safe char | escaped char;
+escaped char = unicode short char |  unicode long char | special escaped char;
+tag = curly tag | pointy tag;
+
+comment = "/*", {comment | ?any character?} ,"*/";
+(* Yes, comments can have other comments inside them *)
+
+reserved char = "<" | ">" | "{" | "}" | "\" | "|";
+
+whitespace = ?any Unicode Separator (Z)?;
+
+safe char = ?any non reserved char?;
+
+special escaped char = "\", ("t" | "n" | "s" | "-" | "b" | '"' | reserved char);
+(* \n U+000A Line Feed,
+   \t U+0009 Tabulation,
+   \s U+0020 Space,
+   \- U+00AD Soft Hyphen,
+   \b U+00A0 No-Break Space,
+   others produce the next imediate character (e.g. \" produces ")
+   *)
+
+unicode short char = "\u", hex digit, hex digit, hex digit, hex digit;
+(* Standard syntax for Unicode code-points (non-BMP chars must use a surrogate pair) *)
+
+unicode long char = "\u{", hex digit, {hex digit}, "}";
+(* Rust inspired syntax for saving characters when escaping unicode code-points (here surrogates aren't allowed) *)
+
+dec digit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "_";
+hex letter = "a" | "b" | "c" | "d" | "e" | "f"
+           | "A" | "B" | "C" | "D" | "E" | "F";
+hex digit = dec digit | hex letter;
+decimal separator = "." | ",";
+number = ["+" | "-" ], {dec digit}, [decimal separator, {dec digit}];
+
+string safe char = ?any character other than \ and "?;
+string char = string safe char | escaped char;
+string = '"', {string char}, '"';
+
+simple name = ?XID_START?, {?XID_CONT?};
+namespace specifier = [simple name], ":";
+(* empty namespaced are used for special things, e.g. <my-tag :id="tag1" :lang="en-EU" />*)
+
+name = [namespace specifier], simple name;
+attribute = name, ["=", number, string];
+tree specifier = "(", name, ")";
+tag core = [tree specifier], name, whitespace, { attribute | whitespace | comment };
+curly tag = "{", tag core, [";", {node}], "}";
+
+pointy tag = pointy start tag | pointy marker tag | pointy end tag;
+(* pointy tags never have "enclosed" content. (e.g. <tag>...</tag> is NOT allowed)*)
+pointy marker tag = "<", tag core, "/>";
+pointy start tag = "<", tag core, "|";
+pointy end tag = "|", tag core, ">";
+(* pointy end tags MUST have only an :id attribute *)
+
+code language = name, " ";
+(**)
+code block = "`", {"`"}, [code language], ?any character?, "`", {"`"};
+(* The code block only ends at the last continuous back tick is there at least
+as many ending back ticks as starting back ticks.
+
+Thus, this is valid <code>```abc `` ````</code> and produces <code>abc `` `</code>
+*)
