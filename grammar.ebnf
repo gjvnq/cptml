@@ -40,9 +40,9 @@ string safe char = ?any character other than \ and "?;
 string char = string safe char | escaped char;
 string = '"', {string char}, '"';
 
-simple name = (?ID_Start? | "_"), {?ID_Continue? | "_" | "-"};
-(* Names can end in hyphens and underscores.
-   ZWJ and ZWNJ are currently forbidden *)
+ID_Other = ("_" | "$" | "-");
+simple name = (?ID_Start? | ID_Other), {?ID_Continue? | ID_Other};
+
 namespace specifier = [simple name], ":";
 (* empty namespaced are used for special things, e.g. <my-tag :id="tag1" :lang="en-EU" />*)
 
@@ -55,7 +55,7 @@ curly tag = "{", tag core, [";", {node}], "}";
 
 pointy tag = pointy start tag | pointy marker tag | pointy end tag;
 (* pointy tags never have "enclosed" content. (e.g. <tag>...</tag> is NOT allowed)*)
-pointy marker tag = "<", tag core, "/>";
+pointy marker tag = "<", tag core, ">";
 pointy start tag = "<", tag core, "|";
 pointy end tag = "|", tag core, ">";
 (* pointy end tags MUST have only an :id attribute *)

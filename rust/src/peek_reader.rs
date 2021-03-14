@@ -1,6 +1,5 @@
-use crate::hacks::ByteReader;
-use crate::hacks::{bytes_to_char, char_size};
-use crate::pos::Position;
+use crate::prelude::*;
+use crate::chars::{bytes_to_char, char_size};
 use core::fmt::Debug;
 
 const READ_BUF_SIZE: usize = 64;
@@ -18,7 +17,7 @@ pub struct PeekReader {
 }
 
 impl PeekReader {
-    pub fn new(reader: Box<dyn ByteReader>) -> Self {
+    pub fn new(reader: Box<dyn ByteReader>) -> CResult<Self> {
         let mut ans = PeekReader {
             buf: ['\0'; READ_BUF_SIZE],
             buf_pos: 0,
@@ -26,53 +25,45 @@ impl PeekReader {
             pos: Position::new(),
             src: reader,
         };
-        ans.read_cycle();
-        ans
+        ans.read_cycle()?;
+        Ok(ans)
     }
 
     pub fn get_pos(&self) -> Position {
         self.pos
     }
 
-    pub fn peek_string(&self, from: isize, to: isize) -> String {
+    pub fn peek_string(&self, from: isize, to: isize) -> CResult<String> {
         let mut ans = String::new();
         for i in from..(to + 1) {
-            ans.push(self.peek(i));
+            ans.push(self.peek(i)?);
         }
-        ans
+        Ok(ans)
     }
 
     // 0 is the element you have just popped.
-    pub fn peek(&self, dist: isize) -> char {
+    pub fn peek(&self, dist: isize) -> CResult<char> {
         if !(-PEEK_RESERVE_I + 1 <= dist && dist <= PEEK_RESERVE_I) {
-            panic!(
-                "PeekReader::peek(n={}), n must be between {} and {}",
-                dist,
-                -PEEK_RESERVE_I + 1,
-                PEEK_RESERVE
-            );
+            return Err(AnyError::OutOfRange(dist, -PEEK_RESERVE_I + 1, PEEK_RESERVE_I));
         }
         let tmp = (self.buf_pos) as isize + dist - 1;
-        if tmp < 0 {
-            panic!(
-                "Something went horribly wrong: dist={} buf_pos={} tmp={} {:?}",
-                dist, self.buf_pos, tmp, self
-            );
+        if tmp < 0 || tmp >= (self.buf.len() as isize) {
+            return Err(AnyError::OutOfRange(tmp, 0, (self.buf.len()-1) as isize));   
         }
-        self.buf[tmp as usize]
+        Ok(self.buf[tmp as usize])
     }
 
-    pub fn pop(&mut self) -> char {
+    pub fn pop(&mut self) -> CResult<char> {
         if self.buf_pos > READ_LIMIT {
-            self.read_cycle()
+            self.read_cycle()?;
         }
         let ans = self.buf[self.buf_pos];
         self.buf_pos += 1;
         self.pos.step(ans);
-        ans
+        Ok(ans)
     }
 
-    fn read_cycle(&mut self) {
+    fn read_cycle(&mut self) -> CResult<()> {
         // Copy chars we had reserved for peeking to the begining of the buffer
         if self.pos.byte != 0 {
             let mut i = 0;
@@ -100,16 +91,20 @@ impl PeekReader {
                 buf[0] = res.unwrap();
             }
             // Find out how many bytes we will need to read for this character
-            let s = char_size(buf[0]);
+            let s = char_size(buf[0])?;
             for j in 1..s {
                 // Read more bytes if necessary (code ponts above 007F)
-                let res = self.src.next();
-                buf[j] = res.unwrap();
+                let res = match self.src.next() {
+                    Some(val) => val,
+                    _ => return Err(AnyError::CharError(CharErrorEnum::SliceTooShort(s, buf.to_vec())))
+                };
+                buf[j] = res;
             }
             // Decode the character and save it
-            self.buf[i] = bytes_to_char(&buf).0;
+            self.buf[i] = bytes_to_char(&buf)?.0;
             i += 1;
         }
+        Ok(())
     }
 }
 
@@ -120,44 +115,44 @@ mod tests {
     #[test]
     fn it_works() {
         let s = "hello world!§abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ\n1§ªº冬";
-        let mut parser = PeekReader::new(Box::new(s.bytes()));
-        assert_eq!('\0', parser.peek(-3));
-        assert_eq!('\0', parser.peek(-2));
-        assert_eq!('\0', parser.peek(-1));
-        assert_eq!('\0', parser.peek(0));
-        assert_eq!('h', parser.peek(1));
-        assert_eq!('h', parser.pop());
-        assert_eq!('e', parser.pop());
-        assert_eq!('l', parser.pop());
-        assert_eq!('l', parser.pop());
-        assert_eq!('o', parser.pop());
-        assert_eq!(' ', parser.pop());
-        assert_eq!('w', parser.pop());
-        assert_eq!('o', parser.pop());
-        assert_eq!('r', parser.pop());
-        assert_eq!('l', parser.pop());
-        assert_eq!('d', parser.pop());
-        assert_eq!('!', parser.pop());
-        assert_eq!('§', parser.pop());
+        let mut parser = PeekReader::new(Box::new(s.bytes())).unwrap();
+        assert_eq!(Ok('\0'), parser.peek(-3));
+        assert_eq!(Ok('\0'), parser.peek(-2));
+        assert_eq!(Ok('\0'), parser.peek(-1));
+        assert_eq!(Ok('\0'), parser.peek(0));
+        assert_eq!(Ok('h'), parser.peek(1));
+        assert_eq!(Ok('h'), parser.pop());
+        assert_eq!(Ok('e'), parser.pop());
+        assert_eq!(Ok('l'), parser.pop());
+        assert_eq!(Ok('l'), parser.pop());
+        assert_eq!(Ok('o'), parser.pop());
+        assert_eq!(Ok(' '), parser.pop());
+        assert_eq!(Ok('w'), parser.pop());
+        assert_eq!(Ok('o'), parser.pop());
+        assert_eq!(Ok('r'), parser.pop());
+        assert_eq!(Ok('l'), parser.pop());
+        assert_eq!(Ok('d'), parser.pop());
+        assert_eq!(Ok('!'), parser.pop());
+        assert_eq!(Ok('§'), parser.pop());
         for c in "abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLMNOPQRSTUVWXYZ".chars() {
-            assert_eq!(c, parser.pop());
+            assert_eq!(Ok(c), parser.pop());
         }
-        assert_eq!('\n', parser.pop());
-        assert_eq!('X', parser.peek(-3));
-        assert_eq!('Y', parser.peek(-2));
-        assert_eq!('Z', parser.peek(-1));
-        assert_eq!('\n', parser.peek(0));
-        assert_eq!('1', parser.peek(1));
-        assert_eq!('§', parser.peek(2));
-        assert_eq!('ª', parser.peek(3));
-        assert_eq!('º', parser.peek(4));
-        assert_eq!('1', parser.pop());
-        assert_eq!('§', parser.pop());
-        assert_eq!('ª', parser.pop());
-        assert_eq!('º', parser.pop());
-        assert_eq!('冬', parser.pop());
-        assert_eq!('\0', parser.pop());
-        assert_eq!('\0', parser.pop());
-        assert_eq!('\0', parser.pop());
+        assert_eq!(Ok('\n'), parser.pop());
+        assert_eq!(Ok('X'), parser.peek(-3));
+        assert_eq!(Ok('Y'), parser.peek(-2));
+        assert_eq!(Ok('Z'), parser.peek(-1));
+        assert_eq!(Ok('\n'), parser.peek(0));
+        assert_eq!(Ok('1'), parser.peek(1));
+        assert_eq!(Ok('§'), parser.peek(2));
+        assert_eq!(Ok('ª'), parser.peek(3));
+        assert_eq!(Ok('º'), parser.peek(4));
+        assert_eq!(Ok('1'), parser.pop());
+        assert_eq!(Ok('§'), parser.pop());
+        assert_eq!(Ok('ª'), parser.pop());
+        assert_eq!(Ok('º'), parser.pop());
+        assert_eq!(Ok('冬'), parser.pop());
+        assert_eq!(Ok('\0'), parser.pop());
+        assert_eq!(Ok('\0'), parser.pop());
+        assert_eq!(Ok('\0'), parser.pop());
     }
 }
