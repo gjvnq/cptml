@@ -55,8 +55,12 @@ impl Span {
     }
 
     // in bytes
-    pub fn len(self) -> usize {
+    pub fn len(&self) -> usize {
         self.end.byte - self.start.byte
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
 

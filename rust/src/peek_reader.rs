@@ -1,5 +1,5 @@
-use crate::prelude::*;
 use crate::chars::{bytes_to_char, char_size};
+use crate::prelude::*;
 use core::fmt::Debug;
 
 const READ_BUF_SIZE: usize = 64;
@@ -44,11 +44,15 @@ impl PeekReader {
     // 0 is the element you have just popped.
     pub fn peek(&self, dist: isize) -> CResult<char> {
         if !(-PEEK_RESERVE_I + 1 <= dist && dist <= PEEK_RESERVE_I) {
-            return Err(AnyError::OutOfRange(dist, -PEEK_RESERVE_I + 1, PEEK_RESERVE_I));
+            return Err(AnyError::OutOfRange(
+                dist,
+                -PEEK_RESERVE_I + 1,
+                PEEK_RESERVE_I,
+            ));
         }
         let tmp = (self.buf_pos) as isize + dist - 1;
         if tmp < 0 || tmp >= (self.buf.len() as isize) {
-            return Err(AnyError::OutOfRange(tmp, 0, (self.buf.len()-1) as isize));   
+            return Err(AnyError::OutOfRange(tmp, 0, (self.buf.len() - 1) as isize));
         }
         Ok(self.buf[tmp as usize])
     }
@@ -96,7 +100,12 @@ impl PeekReader {
                 // Read more bytes if necessary (code ponts above 007F)
                 let res = match self.src.next() {
                     Some(val) => val,
-                    _ => return Err(AnyError::CharError(CharErrorEnum::SliceTooShort(s, buf.to_vec())))
+                    _ => {
+                        return Err(AnyError::CharError(CharErrorEnum::SliceTooShort(
+                            s,
+                            buf.to_vec(),
+                        )))
+                    }
                 };
                 buf[j] = res;
             }

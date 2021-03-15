@@ -1,8 +1,9 @@
 // pub mod basic_parser;
-pub mod prelude;
 pub mod chars;
 pub mod peek_reader;
 pub mod pos;
+pub mod prelude;
+pub mod token_parser;
 // pub mod raw_tokenizer;
 
 // #[cfg(test)]

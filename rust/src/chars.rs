@@ -3,12 +3,12 @@ use unicode_xid::UnicodeXID;
 
 #[inline]
 pub fn is_reserved_char(c: char) -> bool {
-    return c == '<' || c == '>' || c == '{' || c == '}' || c == '\\' || c == '|'
+    return c == '<' || c == '>' || c == '{' || c == '}' || c == '\\' || c == '|' || c == '/';
 }
 
 #[inline]
 fn is_id_other(c: char) -> bool {
-    return c == '_' || c == '-' || c == '$'
+    return c == '_' || c == '-' || c == '$';
 }
 
 #[inline]
@@ -26,12 +26,37 @@ pub enum CharErrorEnum {
     InvalidFirstByte(u8),
     ScalarTooLarge(u32),
     SurrogateInUtf8(u32),
-    SliceTooShort(usize, Vec<u8>)
+    SliceTooShort(usize, Vec<u8>),
 }
 
-use CharErrorEnum::{InvalidFirstByte, ScalarTooLarge, SurrogateInUtf8, SliceTooShort};
+use CharErrorEnum::{InvalidFirstByte, ScalarTooLarge, SliceTooShort, SurrogateInUtf8};
 
-pub fn u32_to_char(val: u32) -> Result<char,CharErrorEnum> {
+pub fn parse_special_char_escape(c0: char, c1: char) -> Option<char> {
+    if c0 != '\\' {
+        return None;
+    }
+    match c1 {
+        '"' => Some('"'),
+        '<' => Some('<'),
+        '>' => Some('>'),
+        '\'' => Some('\''),
+        '\\' => Some('\\'),
+        '`' => Some('`'),
+        'a' => Some('\x07'),
+        'f' => Some('\x0C'),
+        'n' => Some('\n'),
+        'r' => Some('\r'),
+        's' => Some(' '),
+        't' => Some('\t'),
+        'v' => Some('\x0B'),
+        '{' => Some('{'),
+        '|' => Some('|'),
+        '}' => Some('}'),
+        _ => None,
+    }
+}
+
+pub fn u32_to_char(val: u32) -> Result<char, CharErrorEnum> {
     if val > 0x10ffff {
         return Err(ScalarTooLarge(val));
     }
