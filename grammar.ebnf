@@ -2,7 +2,7 @@ document = { node } ;
 node = tag | text | code block | comment;
 text = char, { char };
 char = safe char | escaped char;
-escaped char = unicode hex char | special escaped char;
+escaped char = unicode hex char | text special escaped char;
 tag = curly tag | pointy tag;
 
 comment = "/*", {comment | ?any character?} ,"*/";
@@ -14,7 +14,16 @@ whitespace = {?any Unicode Separator (Z)?};
 
 safe char = ?any non reserved char?;
 
-special escaped char = "\", ("t" | "n" | "s" | "-" | "b" | '"' | reserved char);
+text special escaped char = "\", ("t" | "n" | "s" | "-" | "b" | reserved char);
+(* \n U+000A Line Feed,
+   \t U+0009 Tabulation,
+   \s U+0020 Space,
+   \- U+00AD Soft Hyphen,
+   \b U+00A0 No-Break Space,
+   others produce the next imediate character (e.g. \{ produces {)
+   *)
+
+string escaped char = "\", ("t" | "n" | "s" | "-" | "b" | '"');
 (* \n U+000A Line Feed,
    \t U+0009 Tabulation,
    \s U+0020 Space,
@@ -34,7 +43,7 @@ decimal separator = "." | ",";
 number = ["+" | "-" ], {dec digit | "_"}, [decimal separator, {dec digit | "_"}];
 
 string safe char = ?any character other than \ and "?;
-string char = string safe char | escaped char;
+string char = string safe char | string escaped char | unicode hex char;
 string = '"', {string char}, '"';
 
 ID_Other = "_" | "$" | "-";
