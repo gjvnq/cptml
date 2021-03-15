@@ -2,7 +2,7 @@ document = { node } ;
 node = tag | text | code block | comment;
 text = char, { char };
 char = safe char | escaped char;
-escaped char = unicode short char |  unicode long char | special escaped char;
+escaped char = unicode hex char | special escaped char;
 tag = curly tag | pointy tag;
 
 comment = "/*", {comment | ?any character?} ,"*/";
@@ -23,31 +23,29 @@ special escaped char = "\", ("t" | "n" | "s" | "-" | "b" | '"' | reserved char);
    others produce the next imediate character (e.g. \" produces ")
    *)
 
-unicode short char = "\u", hex digit, hex digit, hex digit, hex digit;
-(* Standard syntax for Unicode code-points (non-BMP chars must use a surrogate pair) *)
+unicode hex char = "\u", hex digit, {hex digit}, ";";
+(*  No surrogates allowed *)
 
-unicode long char = "\u{", hex digit, {hex digit}, "}";
-(* Rust inspired syntax for saving characters when escaping unicode code-points (here surrogates aren't allowed) *)
-
-dec digit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "_";
+dec digit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9";
 hex letter = "a" | "b" | "c" | "d" | "e" | "f"
            | "A" | "B" | "C" | "D" | "E" | "F";
 hex digit = dec digit | hex letter;
 decimal separator = "." | ",";
-number = ["+" | "-" ], {dec digit}, [decimal separator, {dec digit}];
+number = ["+" | "-" ], {dec digit | "_"}, [decimal separator, {dec digit | "_"}];
 
 string safe char = ?any character other than \ and "?;
 string char = string safe char | escaped char;
 string = '"', {string char}, '"';
 
-ID_Other = ("_" | "$" | "-");
+ID_Other = "_" | "$" | "-";
 simple name = (?ID_Start? | ID_Other), {?ID_Continue? | ID_Other};
 
 namespace specifier = [simple name], ":";
 (* empty namespaced are used for special things, e.g. <my-tag :id="tag1" :lang="en-EU" />*)
 
 name = [namespace specifier], simple name;
-attribute = [name, "="], (number | string);
+full attribute = name, "=", (number | string);
+attribute = (number | string) | full attribute | name;
 (* Note that attributes can be positional/nameless but empty HTML-style attributes are not allowed *)
 tree specifier = "(", name, ")";
 tag core = [tree specifier], name, whitespace, { attribute | whitespace | comment };
