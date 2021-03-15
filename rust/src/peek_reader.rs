@@ -29,6 +29,10 @@ impl PeekReader {
         Ok(ans)
     }
 
+    pub fn from_str(input: &'static str) -> CResult<PeekReader> {
+        PeekReader::new(Box::new(input.bytes()))
+    }
+
     pub fn get_pos(&self) -> Position {
         self.pos
     }
