@@ -4,6 +4,7 @@ pub mod peek_reader;
 pub mod pos;
 pub mod prelude;
 pub mod token_parser;
+mod token_parser_code_block;
 mod token_parser_text;
 // pub mod raw_tokenizer;
 

@@ -100,11 +100,7 @@ fn parse_text_unicode(
     }
 }
 
-pub(crate) fn parse_text(
-    src: &mut PeekReader,
-    state: &mut TokenizerState,
-) -> Result<Token, AnyError> {
-    *state = TokenizerState::Normal;
+pub(crate) fn parse_text(src: &mut PeekReader) -> Result<Token, AnyError> {
     let mut mode = TextEscapeState::Normal;
     let mut raw = String::new();
     let mut ans_parsed = String::new();
@@ -123,7 +119,6 @@ pub(crate) fn parse_text(
             TextEscapeState::Unicode => parse_text_unicode(src, &mut raw, &mut mode)?,
             TextEscapeState::Stop => break,
         };
-        
 
         if let Some(val_c) = val_c {
             // Process whitespace relevance
@@ -259,8 +254,7 @@ mod tests {
     fn test_parse_text_1() {
         let input_str = " hi { < | > } \n\t b/d*a {icon";
         let mut input = PeekReader::from_str(&input_str).unwrap();
-        let mut state = TokenizerState::Normal;
-        let ans = parse_text(&mut input, &mut state).unwrap();
+        let ans = parse_text(&mut input).unwrap();
         assert_eq!(ans.raw, input_str[..23]);
         assert_eq!(ans.span, Span::new2(0, 1, 0, 23, 2, 8));
         assert_eq!(
@@ -273,8 +267,7 @@ mod tests {
     fn test_parse_text_2() {
         let input_str = "abc/*comment";
         let mut input = PeekReader::from_str(&input_str).unwrap();
-        let mut state = TokenizerState::Normal;
-        let ans = parse_text(&mut input, &mut state).unwrap();
+        let ans = parse_text(&mut input).unwrap();
         assert_eq!(ans.raw, input_str[..3]);
         assert_eq!(ans.span, Span::new2(0, 1, 0, 3, 1, 3));
         assert_eq!(ans.val, TokenKind::Text("abc".to_string()));
@@ -284,8 +277,7 @@ mod tests {
     fn test_parse_text_3() {
         let input_str = "\n     \\s dasds \\t\t\t\n ";
         let mut input = PeekReader::from_str(&input_str).unwrap();
-        let mut state = TokenizerState::Normal;
-        let ans = parse_text(&mut input, &mut state).unwrap();
+        let ans = parse_text(&mut input).unwrap();
         assert_eq!(ans.raw, input_str);
         assert_eq!(ans.span, Span::new2(0, 1, 0, 21, 3, 1));
         assert_eq!(ans.val, TokenKind::Text("  dasds \t\n".to_string()));
@@ -295,8 +287,7 @@ mod tests {
     fn test_parse_text_4() {
         let input_str = "\n     \\s \n \\s dasds \\t\t\n";
         let mut input = PeekReader::from_str(&input_str).unwrap();
-        let mut state = TokenizerState::Normal;
-        let ans = parse_text(&mut input, &mut state).unwrap();
+        let ans = parse_text(&mut input).unwrap();
         assert_eq!(ans.raw, input_str);
         assert_eq!(ans.span, Span::new2(0, 1, 0, 24, 4, 0));
         assert_eq!(ans.val, TokenKind::Text(" \n  dasds \t\n".to_string()));

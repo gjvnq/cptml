@@ -41,12 +41,13 @@ pub struct Tokenizer {
 
 fn parse_next_token(
     mut src: &mut PeekReader,
-    mut state: &mut TokenizerState,
+    state: &mut TokenizerState,
 ) -> Result<Token, AnyError> {
     let start = src.get_pos();
 
     let ans = match state {
-        TokenizerState::Normal => crate::token_parser_text::parse_text(&mut src, &mut state)?,
+        TokenizerState::Normal => crate::token_parser_text::parse_text(&mut src)?,
+        TokenizerState::CodeBlock => crate::token_parser_code_block::parse_code_block(&mut src)?,
         _ => unreachable!(),
     };
 
