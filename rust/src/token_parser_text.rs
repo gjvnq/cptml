@@ -35,6 +35,7 @@ fn parse_text_normal(
     }
 
     // Process escape sequences
+    raw.push(src.pop()?);
     if pop_c == '\\' {
         *mode = match next_c {
             'u' => TextEscapeState::Unicode,
@@ -42,7 +43,6 @@ fn parse_text_normal(
         };
         return Ok(None);
     }
-    raw.push(src.pop()?);
     return Ok(Some(pop_c));
 }
 
@@ -113,7 +113,8 @@ pub(crate) fn parse_text(
     let start = src.get_pos();
 
     loop {
-        if src.peek(1)? == '\0' {
+        let c1 = src.peek(1)?;
+        if c1 == '\0' {
             mode = TextEscapeState::Stop;
         }
         let val_c = match mode {
@@ -122,23 +123,25 @@ pub(crate) fn parse_text(
             TextEscapeState::Unicode => parse_text_unicode(src, &mut raw, &mut mode)?,
             TextEscapeState::Stop => break,
         };
+        
+
         if let Some(val_c) = val_c {
             // Process whitespace relevance
-            let c_ws = val_c == ' ' || val_c == '\t';
-            if ws == WhitesapeMode::NewLine && !c_ws {
+            let c1_ws = c1 == ' ' || c1 == '\t';
+            if ws == WhitesapeMode::NewLine && !c1_ws {
                 ws = WhitesapeMode::GotFirst;
             }
-            if val_c == '\n' {
-                // At the end of the line, trim the strign to tha last "visible" char
+            if c1 == '\n' {
+                // At the end of the line, trim the string to tha last "visible" char
                 ans_parsed = ans_parsed[..last_vis].to_string();
                 ws = WhitesapeMode::NewLine;
                 if ans_parsed.len() > 0 {
-                    ans_parsed.push(val_c);
+                    ans_parsed.push(c1);
                 }
             }
             if ws == WhitesapeMode::GotFirst {
                 ans_parsed.push(val_c);
-                if !c_ws {
+                if !c1_ws {
                     last_vis = ans_parsed.len();
                 }
             }
@@ -146,22 +149,6 @@ pub(crate) fn parse_text(
             // Do nothing
         }
     }
-
-    // TO DO: set next state?
-    let c = src.peek(1)?;
-    *state = match c {
-        '{' => TokenizerState::CurlyTagHead,
-        '}' => TokenizerState::CurlyTagEnd,
-        '<' | '|' => TokenizerState::PointyTagHead(c),
-        '/' => TokenizerState::Comment,
-        '`' => TokenizerState::CodeBlock,
-        _ => {
-            return Err(AnyError::FauxPanic(format!(
-                "unhandled state transition: peek = {:?} old state = {:?}",
-                c, state
-            )))
-        }
-    };
 
     let end = src.get_pos();
     let span = Span::new_from_to(start, end);
@@ -269,12 +256,11 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_text_normal_1() {
+    fn test_parse_text_1() {
         let input_str = " hi { < | > } \n\t b/d*a {icon";
         let mut input = PeekReader::from_str(&input_str).unwrap();
         let mut state = TokenizerState::Normal;
         let ans = parse_text(&mut input, &mut state).unwrap();
-        assert_eq!(state, TokenizerState::CurlyTagHead);
         assert_eq!(ans.raw, input_str[..23]);
         assert_eq!(ans.span, Span::new2(0, 1, 0, 23, 2, 8));
         assert_eq!(
@@ -284,14 +270,35 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_text_normal_2() {
+    fn test_parse_text_2() {
         let input_str = "abc/*comment";
         let mut input = PeekReader::from_str(&input_str).unwrap();
         let mut state = TokenizerState::Normal;
         let ans = parse_text(&mut input, &mut state).unwrap();
-        assert_eq!(state, TokenizerState::Comment);
         assert_eq!(ans.raw, input_str[..3]);
         assert_eq!(ans.span, Span::new2(0, 1, 0, 3, 1, 3));
         assert_eq!(ans.val, TokenKind::Text("abc".to_string()));
+    }
+
+    #[test]
+    fn test_parse_text_3() {
+        let input_str = "\n     \\s dasds \\t\t\t\n ";
+        let mut input = PeekReader::from_str(&input_str).unwrap();
+        let mut state = TokenizerState::Normal;
+        let ans = parse_text(&mut input, &mut state).unwrap();
+        assert_eq!(ans.raw, input_str);
+        assert_eq!(ans.span, Span::new2(0, 1, 0, 21, 3, 1));
+        assert_eq!(ans.val, TokenKind::Text("  dasds \t\n".to_string()));
+    }
+
+    #[test]
+    fn test_parse_text_4() {
+        let input_str = "\n     \\s \n \\s dasds \\t\t\n";
+        let mut input = PeekReader::from_str(&input_str).unwrap();
+        let mut state = TokenizerState::Normal;
+        let ans = parse_text(&mut input, &mut state).unwrap();
+        assert_eq!(ans.raw, input_str);
+        assert_eq!(ans.span, Span::new2(0, 1, 0, 24, 4, 0));
+        assert_eq!(ans.val, TokenKind::Text(" \n  dasds \t\n".to_string()));
     }
 }

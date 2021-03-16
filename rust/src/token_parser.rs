@@ -2,13 +2,9 @@ use crate::prelude::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenKind {
-    CurlyOpen,
-    CurlyBreak, //;
-    CurlyClose,
-    PointyOpen,
-    PointyBreak, //|
-    PointyClose,
-    TagName(BasicName),
+    TagTailBreak, //;
+    TagHead(char, BasicName),
+    TagTailEnd(char), //} > |
     AttrName,
     AttrEquals(BasicName),
     AttrValue(AttrValue),
@@ -28,11 +24,11 @@ pub struct Token {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenizerState {
     Normal,
-    PointyTagHead(char),
-    CurlyTagHead,
-    CurlyTagEnd,
+    Comment(Box<TokenizerState>),
     CodeBlock,
-    Comment,
+    TagHead,
+    TagTailAttrs,
+    TagEndTail,
 }
 
 #[derive(Debug)]
@@ -52,6 +48,33 @@ fn parse_next_token(
     let ans = match state {
         TokenizerState::Normal => crate::token_parser_text::parse_text(&mut src, &mut state)?,
         _ => unreachable!(),
+    };
+
+    // Compute new state
+    let c1 = src.peek(1)?;
+    let c2 = src.peek(2)?;
+    let unhandled_trransition = Err(AnyError::FauxPanic(format!(
+        "unhandled state transition: peek = {:?} {:?} old state = {:?}",
+        c1, c2, state
+    )));
+    *state = match state {
+        TokenizerState::TagHead => match c1 {
+            '}' | '>' | '|' => TokenizerState::TagEndTail,
+            '/' => match c2 {
+                '*' => TokenizerState::Comment(Box::new(state.clone())),
+                _ => return unhandled_trransition,
+            },
+            _ => TokenizerState::TagTailAttrs,
+        },
+        _ => match c1 {
+            '`' => TokenizerState::CodeBlock,
+            '{' | '<' | '|' => TokenizerState::TagHead,
+            '/' => match c2 {
+                '*' => TokenizerState::Comment(Box::new(state.clone())),
+                _ => return unhandled_trransition,
+            },
+            _ => return unhandled_trransition,
+        },
     };
 
     let end = src.get_pos();
