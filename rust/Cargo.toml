@@ -11,3 +11,8 @@ publish = false
 
 [dependencies]
 unicode-xid = "0.0.4"
+lalrpop-util = "0.19.8"
+regex = "1"
+
+[build-dependencies]
+lalrpop = "0.19.8"
