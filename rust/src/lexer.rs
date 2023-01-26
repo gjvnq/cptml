@@ -6,15 +6,15 @@ use nom::branch::{alt};
 use unicode_xid::UnicodeXID;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TagName<'a> {
+pub struct IdFullName<'a> {
     namespace: &'a str,
     localname: &'a str,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct CurlyTagStart {
-    src: String,
-    name: TagName,
+pub struct CurlyTagStart<'a> {
+    src: &'a str,
+    name: IdFullName<'a>,
 }
 
 
@@ -23,19 +23,23 @@ pub fn xid_name(input: &str) -> nom::IResult<&str, &str> {
 
     match input_chars.next() {
         Some((_, ch)) => if !UnicodeXID::is_xid_start(ch) {
-            panic!("not xid_start")
+            // Using ErrorKind::Alpha is a bit wrong but it's good enough for now. Unfortunately there's no ErrorKind::XidStart
+            return Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Alpha)));
         },
-        None => panic!("input too short")
+        None => {return Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Eof)));}
     }
 
     let mut last_pos = 0;
     loop {
         match input_chars.next() {
-            Some((pos, ch)) => match UnicodeXID::is_xid_continue(ch) {
-                true => {last_pos = pos},
-                false => {last_pos = pos; break}
+            Some((pos, ch)) => if !UnicodeXID::is_xid_continue(ch) {
+                last_pos = pos;
+                break
             },
-            None => {last_pos = input.len(); break}
+            None => {
+                last_pos = input.len();
+                break
+            }
         }
     }
 
@@ -45,21 +49,21 @@ pub fn xid_name(input: &str) -> nom::IResult<&str, &str> {
     ))
 }
 
-pub fn tagname_special(input: &str) -> nom::IResult<&str, (&str, &str)> {
+pub fn idfullname_special(input: &str) -> nom::IResult<&str, (&str, &str)> {
     pair(recognize(char('!')), xid_name)(input)
 }
 
-pub fn tagname_regular(input: &str) -> nom::IResult<&str, (&str, &str)> {
+pub fn idfullname_regular(input: &str) -> nom::IResult<&str, (&str, &str)> {
     separated_pair(xid_name, char(':'), xid_name)(input)
 }
 
-pub fn tagname_local(input: &str) -> nom::IResult<&str, (&str, &str)> {
+pub fn idfullname_local(input: &str) -> nom::IResult<&str, (&str, &str)> {
     map(xid_name, |s: &str| ("", s))(input)
 }
 
-pub fn tagname(input: &str) -> nom::IResult<&str, TagName> {
-	let (input, (namespace, localname)) = alt((tagname_special, tagname_regular, tagname_local))(input)?;
-    Ok((input, TagName{
+pub fn idfullname(input: &str) -> nom::IResult<&str, IdFullName> {
+    let (input, (namespace, localname)) = alt((idfullname_special, idfullname_regular, idfullname_local))(input)?;
+    Ok((input, IdFullName{
         namespace: namespace,
         localname: localname
     }))
@@ -70,15 +74,17 @@ mod tests {
     use crate::lexer::*;
 
     #[test]
-    fn tagname_test() {
+    fn idfullname_test() {
+        println!("{:?}", xid_name(""));
+        println!("{:?}", xid_name(" "));
         println!("{:?}", xid_name("çà_ "));
         println!("{:?}", xid_name("çà_-a"));
 
-        println!("{:?}", tagname("!id"));
-        println!("{:?}", tagname("name"));
-        println!("{:?}", tagname("hello:world"));
-        println!("{:?}", tagname("helláo:worlçd"));
-        println!("{:?}", tagname(":hello:world"));
-        // println!("{:?}", tagname_special(":hello:world"));
+        println!("{:?}", idfullname("!id"));
+        println!("{:?}", idfullname("name"));
+        println!("{:?}", idfullname("hello:world"));
+        println!("{:?}", idfullname("helláo:worlçd"));
+        println!("{:?}", idfullname(":hello:world"));
+        println!("{:?}", idfullname("!hello:world"));
     }
 }
