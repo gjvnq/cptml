@@ -18,6 +18,7 @@ pub struct CurlyTagStart<'a> {
 }
 
 
+// Parses <XID_START> <XID_CONTINUE>*
 pub fn xid_name(input: &str) -> nom::IResult<&str, &str> {
     let mut input_chars = input.char_indices();
 
@@ -49,14 +50,17 @@ pub fn xid_name(input: &str) -> nom::IResult<&str, &str> {
     ))
 }
 
+// E.g. "!id", "!cptml"
 pub fn idfullname_special(input: &str) -> nom::IResult<&str, (&str, &str)> {
     pair(recognize(char('!')), xid_name)(input)
 }
 
+// E.g. "namespace:name", "namespace:color"
 pub fn idfullname_regular(input: &str) -> nom::IResult<&str, (&str, &str)> {
     separated_pair(xid_name, char(':'), xid_name)(input)
 }
 
+// E.g. "name", "color"
 pub fn idfullname_local(input: &str) -> nom::IResult<&str, (&str, &str)> {
     map(xid_name, |s: &str| ("", s))(input)
 }
