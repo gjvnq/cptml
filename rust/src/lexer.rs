@@ -6,9 +6,9 @@ use nom::branch::{alt};
 use unicode_xid::UnicodeXID;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct TagName {
-    namespace: String,
-    localname: String,
+pub struct TagName<'a> {
+    namespace: &'a str,
+    localname: &'a str,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -60,8 +60,8 @@ pub fn tagname_local(input: &str) -> nom::IResult<&str, (&str, &str)> {
 pub fn tagname(input: &str) -> nom::IResult<&str, TagName> {
 	let (input, (namespace, localname)) = alt((tagname_special, tagname_regular, tagname_local))(input)?;
     Ok((input, TagName{
-        namespace: namespace.to_string(),
-        localname: localname.to_string()
+        namespace: namespace,
+        localname: localname
     }))
 }
 
