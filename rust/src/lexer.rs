@@ -18,12 +18,20 @@ pub struct CurlyTagStart<'a> {
 }
 
 
+fn valid_xid_start(ch: char) -> bool {
+    return UnicodeXID::is_xid_start(ch);
+}
+
+fn valid_xid_continue(ch: char) -> bool {
+    return ch == '-' || UnicodeXID::is_xid_continue(ch);
+}
+
 // Parses <XID_START> <XID_CONTINUE>*
 pub fn xid_name(input: &str) -> nom::IResult<&str, &str> {
     let mut input_chars = input.char_indices();
 
     match input_chars.next() {
-        Some((_, ch)) => if !UnicodeXID::is_xid_start(ch) {
+        Some((_, ch)) => if !valid_xid_start(ch) {
             // Using ErrorKind::Alpha is a bit wrong but it's good enough for now. Unfortunately there's no ErrorKind::XidStart
             return Err(nom::Err::Error(nom::error::Error::new(input, nom::error::ErrorKind::Alpha)));
         },
@@ -33,7 +41,7 @@ pub fn xid_name(input: &str) -> nom::IResult<&str, &str> {
     let mut last_pos = 0;
     loop {
         match input_chars.next() {
-            Some((pos, ch)) => if !UnicodeXID::is_xid_continue(ch) {
+            Some((pos, ch)) => if !valid_xid_continue(ch) {
                 last_pos = pos;
                 break
             },
@@ -76,19 +84,40 @@ pub fn idfullname(input: &str) -> nom::IResult<&str, IdFullName> {
 #[cfg(test)]
 mod tests {
     use crate::lexer::*;
+    use nom::error::ErrorKind::{Alpha, Char, Eof};
+    use nom::Err::Error as NomError;
 
     #[test]
-    fn idfullname_test() {
-        println!("{:?}", xid_name(""));
-        println!("{:?}", xid_name(" "));
-        println!("{:?}", xid_name("çà_ "));
-        println!("{:?}", xid_name("çà_-a"));
+    fn test_xid_name() {
+        assert!(xid_name("").is_err());
+        assert_eq!(xid_name(""), Err(nom::Err::Error(nom::error::Error { input: "", code: Eof })));
+        assert_eq!(xid_name("_"), Err(nom::Err::Error(nom::error::Error { input: "_", code: Alpha })));
+        assert_eq!(xid_name("-"), Err(nom::Err::Error(nom::error::Error { input: "-", code: Alpha })));
+        assert_eq!(xid_name("a"), Ok(("", "a")));
+        assert_eq!(xid_name("my-tag"), Ok(("", "my-tag")));
+        assert_eq!(xid_name("my_tag"), Ok(("", "my_tag")));
+        assert_eq!(xid_name("ただの-名前"), Ok(("", "ただの-名前")));
+    }
 
-        println!("{:?}", idfullname("!id"));
-        println!("{:?}", idfullname("name"));
-        println!("{:?}", idfullname("hello:world"));
-        println!("{:?}", idfullname("helláo:worlçd"));
-        println!("{:?}", idfullname(":hello:world"));
-        println!("{:?}", idfullname("!hello:world"));
+    #[test]
+    fn test_idfullname_special() {
+        assert_eq!(idfullname_special("!cptml"), Ok(("", ("!", "cptml"))));
+        assert_eq!(idfullname_special("!href"), Ok(("", ("!", "href"))));
+        assert_eq!(idfullname_special("!名前"), Ok(("", ("!", "名前"))));
+        assert_eq!(idfullname_special("cptml"), Err(nom::Err::Error(nom::error::Error { input: "cptml", code: Char })));
+    }
+    #[test]
+    fn test_idfullname_regular() {
+        assert_eq!(idfullname_regular("ns1:img"), Ok(("", ("ns1", "img"))));
+        assert_eq!(idfullname_regular("ns2:span"), Ok(("", ("ns2", "span"))));
+        assert_eq!(idfullname_regular("ns3:名前"), Ok(("", ("ns3", "名前"))));
+        assert_eq!(idfullname_regular("img"), Err(nom::Err::Error(nom::error::Error { input: "", code: Char })));
+    }
+    #[test]
+    fn test_idfullname_local() {
+        assert_eq!(idfullname_local("img"), Ok(("", ("", "img"))));
+        assert_eq!(idfullname_local("span"), Ok(("", ("", "span"))));
+        assert_eq!(idfullname_local("名前"), Ok(("", ("", "名前"))));
+        assert_eq!(idfullname_local("ns:名前"), Ok((":名前", ("", "ns"))));
     }
 }
