@@ -94,10 +94,18 @@ mod tests {
 
     #[test]
     fn test_curly_tag_start() {
-        assert_eq!(curly_tag_start(""), Err(nom::Err::Error(nom::error::Error { input: "", code: Eof })));
-        assert_eq!(curly_tag_start("{"), Err(nom::Err::Error(nom::error::Error { input: "{", code: Eof })));
+        assert_eq!(curly_tag_start(""), Err(nom::Err::Error(nom::error::Error { input: "", code: Char })));
+        assert_eq!(curly_tag_start("{"), Err(nom::Err::Error(nom::error::Error { input: "", code: Eof })));
         assert_eq!(curly_tag_start("{span "), Ok((" ", IdFullName{
             namespace:  "",
+            localname: "span"
+        })));
+        assert_eq!(curly_tag_start("{!cptml "), Ok((" ", IdFullName{
+            namespace:  "!",
+            localname: "cptml"
+        })));
+        assert_eq!(curly_tag_start("{tei:span "), Ok((" ", IdFullName{
+            namespace:  "tei",
             localname: "span"
         })));
     }
