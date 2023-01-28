@@ -5,7 +5,7 @@ use nom::sequence::{pair, separated_pair};
 use nom::branch::{alt};
 use unicode_xid::UnicodeXID;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct IdFullName<'a> {
     namespace: &'a str,
     localname: &'a str,
@@ -81,6 +81,11 @@ pub fn idfullname(input: &str) -> nom::IResult<&str, IdFullName> {
     }))
 }
 
+pub fn curly_tag_start(input: &str) -> nom::IResult<&str, IdFullName> {
+    let (input, _) = recognize(char('{'))(input)?;
+    idfullname(input)
+}
+
 #[cfg(test)]
 mod tests {
     use crate::lexer::*;
@@ -88,8 +93,17 @@ mod tests {
     use nom::Err::Error as NomError;
 
     #[test]
+    fn test_curly_tag_start() {
+        assert_eq!(curly_tag_start(""), Err(nom::Err::Error(nom::error::Error { input: "", code: Eof })));
+        assert_eq!(curly_tag_start("{"), Err(nom::Err::Error(nom::error::Error { input: "{", code: Eof })));
+        assert_eq!(curly_tag_start("{span "), Ok((" ", IdFullName{
+            namespace:  "",
+            localname: "span"
+        })));
+    }
+
+    #[test]
     fn test_xid_name() {
-        assert!(xid_name("").is_err());
         assert_eq!(xid_name(""), Err(nom::Err::Error(nom::error::Error { input: "", code: Eof })));
         assert_eq!(xid_name("_"), Err(nom::Err::Error(nom::error::Error { input: "_", code: Alpha })));
         assert_eq!(xid_name("-"), Err(nom::Err::Error(nom::error::Error { input: "-", code: Alpha })));
