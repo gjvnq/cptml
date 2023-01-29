@@ -107,7 +107,10 @@ pub enum TagAttrValue {
 
 impl TagAttrValue {
     pub fn encode_cptml(&self) -> String {
-        todo!();
+        match self {
+            TagAttrValue::Integer(i) => i.to_string(),
+            TagAttrValue::Boolean(b) => b.to_string()
+        }
     }
 }
 
@@ -198,7 +201,23 @@ pub struct PointyTagStart<'a> {
 
 impl<'a> PointyTagStart<'a> {
     pub fn encode_cptml(&self) -> String {
-        todo!()
+        let mut ans = String::default();
+        ans.push_str("<");
+        if self.view.len() > 0 {
+            ans.push_str("(");
+            ans.push_str(self.view);
+            ans.push_str(")");
+        }
+        ans.push_str(&self.element.encode_cptml());
+        for arg in self.args.iter() {
+            ans.push_str(arg.0);
+            ans.push_str(&arg.1.encode_cptml());
+            ans.push_str("=");
+            ans.push_str(&arg.2.encode_cptml());
+        }
+        ans.push_str(self.whitespace);
+        ans.push_str("|");
+        ans.to_string()
     }
 }
 
@@ -313,6 +332,16 @@ mod tests {
     use nom::error::ErrorKind::{Alpha, Char, Digit, Eof, Tag};
 
     #[test]
+    fn test_pointy_tag_start_encode_cptml() {
+        let src = "<sentence|";
+        assert_eq!(pointy_tag_start(src).unwrap().1.encode_cptml(), src);
+        let src = "<sentence  |";
+        assert_eq!(pointy_tag_start(src).unwrap().1.encode_cptml(), src);
+        let src = "<(文法)tei:sentence html:n=3 |";
+        assert_eq!(pointy_tag_start(src).unwrap().1.encode_cptml(), src);
+    }
+
+    #[test]
     fn test_pointy_tag_start() {
         assert_eq!(
             pointy_tag_start("<sentence| "),
@@ -345,7 +374,7 @@ mod tests {
             ))
         );
         assert_eq!(
-            pointy_tag_start("<(文法)tei:sentence html:n=3 |  "),
+            pointy_tag_start("<(文法)tei:sentence\thtml:n=3 |  "),
             Ok((
                 "  ",
                 PointyTagStart {
@@ -355,7 +384,7 @@ mod tests {
                     },
                     view: "文法",
                     args: vec![(
-                        " ",
+                        "\t",
                         IdFullName {
                             namespace: "html",
                             localname: "n"
