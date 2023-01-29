@@ -1,7 +1,10 @@
 use nom::IResult;
-use nom::character::complete::{char, alphanumeric1, satisfy};
+use nom::character::complete;
+use nom::character::complete::{char, alphanumeric1, satisfy, multispace0};
 use nom::combinator::{recognize, map, peek};
+use nom::multi::{many0};
 use nom::sequence::{pair, separated_pair};
+use nom::bytes::complete::tag;
 use nom::branch::{alt};
 use unicode_xid::UnicodeXID;
 
@@ -10,13 +13,6 @@ pub struct IdFullName<'a> {
     namespace: &'a str,
     localname: &'a str,
 }
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct CurlyTagStart<'a> {
-    src: &'a str,
-    name: IdFullName<'a>,
-}
-
 
 fn valid_xid_start(ch: char) -> bool {
     return UnicodeXID::is_xid_start(ch);
@@ -81,33 +77,136 @@ pub fn idfullname(input: &str) -> nom::IResult<&str, IdFullName> {
     }))
 }
 
-pub fn curly_tag_start(input: &str) -> nom::IResult<&str, IdFullName> {
+#[derive(Debug, Clone, PartialEq)]
+pub enum TagAttrValue {
+    Integer(i64),
+    // Float(f64),
+    // String(str),
+    Boolean(bool)
+}
+
+pub fn parse_bool_true(input: &str) -> nom::IResult<&str, bool> {
+    let (input, _) = tag("true")(input)?;
+    Ok((input, true))
+}
+
+pub fn parse_bool_false(input: &str) -> nom::IResult<&str, bool> {
+    let (input, _) = tag("false")(input)?;
+    Ok((input, false))
+}
+
+pub fn tag_args_bool(input: &str) -> nom::IResult<&str, TagAttrValue> {
+    let (input, flag) = alt((parse_bool_true, parse_bool_false))(input)?;
+    Ok((input, TagAttrValue::Boolean(flag)))
+}
+
+// TODO: support underscores as thousands separator
+pub fn integer_hex(input: &str) -> nom::IResult<&str, i64> {
+    let (input, _) = tag("0x")(input)?;
+    let (input, val) = complete::hex_digit1(input)?;
+    Ok((input, i64::from_str_radix(val, 16).expect("valid hexadecimal integer")))
+}
+
+// TODO: support underscores as thousands separator
+pub fn integer_dec(input: &str) -> nom::IResult<&str, i64> {
+    let (input, val) = complete::i64(input)?;
+    Ok((input, val))
+}
+
+pub fn tag_args_integer(input: &str) -> nom::IResult<&str, TagAttrValue> {
+    let (input, val) = alt((integer_hex, integer_dec))(input)?;
+    Ok((input, TagAttrValue::Integer(val)))
+}
+
+pub fn tag_args_pair<'a>(input: &'a str) -> nom::IResult<&'a str, (&'a str, IdFullName<'a>, TagAttrValue)> {
+    let (input, whitespace) = multispace0(input)?;
+    let (input, name) = idfullname(input)?;
+    let (input, _) = char('=')(input)?;
+    let (input, val) = alt((tag_args_bool, tag_args_integer))(input)?;
+    Ok((input, (whitespace, name, val)))
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct CurlyTagStart<'a> {
+    element: IdFullName<'a>,
+    args: Vec<(&'a str, IdFullName<'a>, TagAttrValue)>,
+    whitespace: &'a str,
+}
+
+pub fn curly_tag_start<'a>(input: &'a str) -> nom::IResult<&'a str, CurlyTagStart<'a>> {
     let (input, _) = recognize(char('{'))(input)?;
-    idfullname(input)
+    let (input, element) = idfullname(input)?;
+    let (input, args) = many0(tag_args_pair)(input)?;
+    let (input, whitespace) = multispace0(input)?;
+    let (input, _) = recognize(char(';'))(input)?;
+
+    Ok((input, CurlyTagStart{
+        element: element,
+        args: args,
+        whitespace: whitespace
+    }))
 }
 
 #[cfg(test)]
 mod tests {
     use crate::lexer::*;
-    use nom::error::ErrorKind::{Alpha, Char, Eof};
+    use nom::error::ErrorKind::{Alpha, Char, Eof, Tag, Digit};
     use nom::Err::Error as NomError;
 
     #[test]
     fn test_curly_tag_start() {
         assert_eq!(curly_tag_start(""), Err(nom::Err::Error(nom::error::Error { input: "", code: Char })));
         assert_eq!(curly_tag_start("{"), Err(nom::Err::Error(nom::error::Error { input: "", code: Eof })));
-        assert_eq!(curly_tag_start("{span "), Ok((" ", IdFullName{
-            namespace:  "",
-            localname: "span"
+        assert_eq!(curly_tag_start("{span; "), Ok((" ", CurlyTagStart{
+            element: IdFullName{
+                namespace:  "",
+                localname: "span"
+            },
+            args: vec![],
+            whitespace: "",
         })));
-        assert_eq!(curly_tag_start("{!cptml "), Ok((" ", IdFullName{
-            namespace:  "!",
-            localname: "cptml"
+        assert_eq!(curly_tag_start("{!cptml\t; "), Ok((" ", CurlyTagStart{
+            element: IdFullName{
+                namespace:  "!",
+                localname: "cptml"
+            },
+            args: vec![],
+            whitespace: "\t",
         })));
-        assert_eq!(curly_tag_start("{tei:span "), Ok((" ", IdFullName{
-            namespace:  "tei",
-            localname: "span"
+        assert_eq!(curly_tag_start("{tei:span ;"), Ok(("", CurlyTagStart{
+            element: IdFullName{
+                namespace:  "tei",
+                localname: "span"
+            },
+            args: vec![],
+            whitespace: " ",
         })));
+        assert_eq!(curly_tag_start("{tei:span !id=4 html:show=false ;"), Ok(("", CurlyTagStart{
+            element: IdFullName{
+                namespace:  "tei",
+                localname: "span"
+            },
+            args: vec! [(" ", IdFullName { namespace: "!", localname: "id" }, TagAttrValue::Integer(4)), (" ", IdFullName { namespace: "html", localname: "show" }, TagAttrValue::Boolean(false))],
+            whitespace: " ",
+        })));
+    }
+
+    #[test]
+    fn test_tag_integer() {
+        assert_eq!(tag_args_integer(""), Err(nom::Err::Error(nom::error::Error { input: "", code: Digit })));
+        assert_eq!(tag_args_integer("0"), Ok(("", TagAttrValue::Integer(0))));
+        assert_eq!(tag_args_integer("874938432809"), Ok(("", TagAttrValue::Integer(874938432809))));
+        assert_eq!(tag_args_integer("-34343432"), Ok(("", TagAttrValue::Integer(-34343432))));
+        assert_eq!(tag_args_integer("0xA"), Ok(("", TagAttrValue::Integer(10))));
+    }
+
+    #[test]
+    fn test_tag_bool() {
+        assert_eq!(tag_args_bool(""), Err(nom::Err::Error(nom::error::Error { input: "", code: Tag })));
+        assert_eq!(tag_args_bool("true"), Ok(("", TagAttrValue::Boolean(true))));
+        assert_eq!(tag_args_bool("false"), Ok(("", TagAttrValue::Boolean(false))));
+        assert_eq!(tag_args_bool("t"), Err(nom::Err::Error(nom::error::Error { input: "t", code: Tag })));
+        assert_eq!(tag_args_bool("f"), Err(nom::Err::Error(nom::error::Error { input: "f", code: Tag })));
     }
 
     #[test]
