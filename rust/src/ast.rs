@@ -295,7 +295,7 @@ pub fn tex_code<'a>(input: &'a str) -> nom::IResult<&'a str, TexCode<'a>> {
 
 #[cfg(test)]
 mod tests {
-    use crate::lexer::*;
+    use crate::ast::*;
     use nom::error::ErrorKind::{Alpha, Char, Digit, Eof, Tag};
     use nom::Err::Error as NomError;
 
