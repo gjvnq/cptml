@@ -8,10 +8,22 @@ use nom::sequence::{pair, separated_pair};
 use nom::IResult;
 use unicode_xid::UnicodeXID;
 
+// Todo: implement encoding based on those types
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct IdFullName<'a> {
     namespace: &'a str,
     localname: &'a str,
+}
+
+impl<'a> IdFullName<'a> {
+    pub fn encode_cptml(&self) -> String {
+        match self.namespace {
+            "" => self.localname.to_string(),
+            "!" => format!("!{}", self.localname),
+            _ => format!("{}:{}", self.namespace, self.localname),
+        }
+    }
 }
 
 fn valid_xid_start(ch: char) -> bool {
@@ -98,6 +110,12 @@ pub enum TagAttrValue {
     Boolean(bool),
 }
 
+impl TagAttrValue {
+    pub fn encode_cptml(&self) -> String {
+        todo!();
+    }
+}
+
 pub fn parse_bool_true(input: &str) -> nom::IResult<&str, bool> {
     let (input, _) = tag("true")(input)?;
     Ok((input, true))
@@ -144,11 +162,18 @@ pub fn tag_args_pair<'a>(
     Ok((input, (whitespace, name, val)))
 }
 
+// TODO: support content
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct CurlyTagStart<'a> {
     element: IdFullName<'a>,
     args: Vec<(&'a str, IdFullName<'a>, TagAttrValue)>,
     whitespace: &'a str,
+}
+
+impl<'a> CurlyTagStart<'a> {
+    pub fn encode_cptml(&self) -> String {
+        todo!();
+    }
 }
 
 pub fn curly_tag_start<'a>(input: &'a str) -> nom::IResult<&'a str, CurlyTagStart<'a>> {
@@ -168,11 +193,159 @@ pub fn curly_tag_start<'a>(input: &'a str) -> nom::IResult<&'a str, CurlyTagStar
     ))
 }
 
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct PointyTagStart<'a> {
+    element: IdFullName<'a>,
+    view: &'a str,
+    args: Vec<(&'a str, IdFullName<'a>, TagAttrValue)>,
+    whitespace: &'a str,
+}
+
+impl<'a> PointyTagStart<'a> {
+    pub fn encode_cptml(&self) -> String {
+        todo!()
+    }
+}
+
+pub fn pointy_tag_start<'a>(input: &'a str) -> nom::IResult<&'a str, PointyTagStart<'a>> {
+    todo!()
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct PointyTagEnd<'a> {
+    element: Option<IdFullName<'a>>,
+    view: &'a str,
+    whitespace: &'a str,
+}
+
+impl<'a> PointyTagEnd<'a> {
+    pub fn encode_cptml(&self) -> String {
+        todo!();
+    }
+}
+
+pub fn pointy_tag_end<'a>(input: &'a str) -> nom::IResult<&'a str, PointyTagEnd<'a>> {
+    todo!()
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct InlineText<'a> {
+    src: &'a str,
+    meaning: String,
+}
+
+impl<'a> InlineText<'a> {
+    pub fn encode_cptml(&self) -> String {
+        todo!();
+    }
+}
+
+pub fn inline_text<'a>(input: &'a str) -> nom::IResult<&'a str, InlineText<'a>> {
+    todo!()
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Comment<'a> {
+    src: &'a str,
+}
+
+impl<'a> Comment<'a> {
+    pub fn encode_cptml(&self) -> String {
+        todo!();
+    }
+}
+
+pub fn comment<'a>(input: &'a str) -> nom::IResult<&'a str, Comment<'a>> {
+    todo!()
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct CodeBlock<'a> {
+    src: &'a str,
+    lang: &'a str,
+    meaning: String,
+}
+
+impl<'a> CodeBlock<'a> {
+    pub fn encode_cptml(&self) -> String {
+        todo!();
+    }
+}
+
+pub fn codeblock<'a>(input: &'a str) -> nom::IResult<&'a str, CodeBlock<'a>> {
+    todo!()
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct TexCode<'a> {
+    src: &'a str,
+    n_dollar_signs: isize,
+    meaning: String,
+}
+
+impl<'a> TexCode<'a> {
+    pub fn encode_cptml(&self) -> String {
+        todo!();
+    }
+}
+
+pub fn tex_code<'a>(input: &'a str) -> nom::IResult<&'a str, TexCode<'a>> {
+    todo!()
+}
+
 #[cfg(test)]
 mod tests {
     use crate::lexer::*;
     use nom::error::ErrorKind::{Alpha, Char, Digit, Eof, Tag};
     use nom::Err::Error as NomError;
+
+    #[test]
+    fn test_idfullname_encode_cptml_2() {
+        let src = "!schema";
+        assert_eq!(idfullname(src).unwrap().1.encode_cptml(), src);
+
+        let src = "tei:verse";
+        assert_eq!(idfullname(src).unwrap().1.encode_cptml(), src);
+
+        let src = "img";
+        assert_eq!(idfullname(src).unwrap().1.encode_cptml(), src);
+    }
+
+    #[test]
+    fn test_idfullname_encode_cptml_1() {
+        assert_eq!(
+            IdFullName {
+                namespace: "",
+                localname: ""
+            }
+            .encode_cptml(),
+            ""
+        );
+        assert_eq!(
+            IdFullName {
+                namespace: "!",
+                localname: "cptml"
+            }
+            .encode_cptml(),
+            "!cptml"
+        );
+        assert_eq!(
+            IdFullName {
+                namespace: "tei",
+                localname: "line"
+            }
+            .encode_cptml(),
+            "tei:line"
+        );
+        assert_eq!(
+            IdFullName {
+                namespace: "",
+                localname: "span"
+            }
+            .encode_cptml(),
+            "span"
+        );
+    }
 
     #[test]
     fn test_curly_tag_start() {
