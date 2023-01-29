@@ -2,11 +2,11 @@ use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::character::complete;
 use nom::character::complete::{char, multispace0};
-use nom::combinator::{map, recognize};
+use nom::combinator::{map, opt, recognize};
 use nom::error::Error as NomError;
 use nom::error::ErrorKind::{Alpha, Eof};
 use nom::multi::many0;
-use nom::sequence::{pair, separated_pair};
+use nom::sequence::{delimited, pair, separated_pair};
 use nom::Err::Error as NomErr;
 use nom::IResult;
 use unicode_xid::UnicodeXID;
@@ -202,8 +202,27 @@ impl<'a> PointyTagStart<'a> {
     }
 }
 
-pub fn pointy_tag_start<'a>(_input: &'a str) -> IResult<&'a str, PointyTagStart<'a>> {
-    todo!()
+pub fn view_name<'a>(input: &'a str) -> IResult<&'a str, &'a str> {
+    delimited(char('('), xid_name, char(')'))(input)
+}
+
+pub fn pointy_tag_start<'a>(input: &'a str) -> IResult<&'a str, PointyTagStart<'a>> {
+    let (input, _) = recognize(char('<'))(input)?;
+    let (input, view) = opt(view_name)(input)?;
+    let (input, element) = idfullname(input)?;
+    let (input, args) = many0(tag_args_pair)(input)?;
+    let (input, whitespace) = multispace0(input)?;
+    let (input, _) = recognize(char('|'))(input)?;
+
+    Ok((
+        input,
+        PointyTagStart {
+            element: element,
+            view: view.unwrap_or(""),
+            args: args,
+            whitespace: whitespace,
+        },
+    ))
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -292,6 +311,62 @@ pub fn tex_code<'a>(_input: &'a str) -> IResult<&'a str, TexCode<'a>> {
 mod tests {
     use crate::ast::*;
     use nom::error::ErrorKind::{Alpha, Char, Digit, Eof, Tag};
+
+    #[test]
+    fn test_pointy_tag_start() {
+        assert_eq!(
+            pointy_tag_start("<sentence| "),
+            Ok((
+                " ",
+                PointyTagStart {
+                    element: IdFullName {
+                        namespace: "",
+                        localname: "sentence"
+                    },
+                    view: "",
+                    args: vec![],
+                    whitespace: "",
+                }
+            ))
+        );
+        assert_eq!(
+            pointy_tag_start("<sentence  | "),
+            Ok((
+                " ",
+                PointyTagStart {
+                    element: IdFullName {
+                        namespace: "",
+                        localname: "sentence"
+                    },
+                    view: "",
+                    args: vec![],
+                    whitespace: "  ",
+                }
+            ))
+        );
+        assert_eq!(
+            pointy_tag_start("<(文法)tei:sentence html:n=3 |  "),
+            Ok((
+                "  ",
+                PointyTagStart {
+                    element: IdFullName {
+                        namespace: "tei",
+                        localname: "sentence"
+                    },
+                    view: "文法",
+                    args: vec![(
+                        " ",
+                        IdFullName {
+                            namespace: "html",
+                            localname: "n"
+                        },
+                        TagAttrValue::Integer(3)
+                    )],
+                    whitespace: " ",
+                }
+            ))
+        );
+    }
 
     #[test]
     fn test_idfullname_encode_cptml_2() {
