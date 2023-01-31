@@ -248,7 +248,6 @@ pub fn pointy_tag_start<'a>(input: &'a str) -> IResult<&'a str, PointyTagStart<'
 pub struct PointyTagEnd<'a> {
     element: Option<IdFullName<'a>>,
     view: &'a str,
-    whitespace: &'a str,
 }
 
 impl<'a> PointyTagEnd<'a> {
@@ -330,6 +329,81 @@ pub fn tex_code<'a>(_input: &'a str) -> IResult<&'a str, TexCode<'a>> {
 mod tests {
     use crate::ast::*;
     use nom::error::ErrorKind::{Alpha, Char, Digit, Eof, Tag};
+
+    #[test]
+    fn test_pointy_tag_end_encode_cptml() {
+        let src = "|>";
+        assert_eq!(pointy_tag_end(src).unwrap().1.encode_cptml(), src);
+        let src = "|sentence>";
+        assert_eq!(pointy_tag_end(src).unwrap().1.encode_cptml(), src);
+        let src = "|(文法)tei:sentence>";
+        assert_eq!(pointy_tag_end(src).unwrap().1.encode_cptml(), src);
+        let src = "|(文法)>";
+        assert_eq!(pointy_tag_end(src).unwrap().1.encode_cptml(), src);
+    }
+
+    #[test]
+    fn test_pointy_tag_end() {
+        assert_eq!(
+            pointy_tag_end("|> "),
+            Ok((
+                " ",
+                PointyTagEnd {
+                    element: None,
+                    view: "",
+                }
+            ))
+        );
+        assert_eq!(
+            pointy_tag_end("|sentence> "),
+            Ok((
+                " ",
+                PointyTagEnd {
+                    element: Some(IdFullName {
+                        namespace: "",
+                        localname: "sentence"
+                    }),
+                    view: "",
+                }
+            ))
+        );
+        assert_eq!(
+            pointy_tag_end("|sentence> "),
+            Ok((
+                " ",
+                PointyTagEnd {
+                    element: Some(IdFullName {
+                        namespace: "",
+                        localname: "sentence"
+                    }),
+                    view: "",
+                }
+            ))
+        );
+        assert_eq!(
+            pointy_tag_end("|(文法)tei:sentence>  "),
+            Ok((
+                "  ",
+                PointyTagEnd {
+                    element: Some(IdFullName {
+                        namespace: "tei",
+                        localname: "sentence"
+                    }),
+                    view: "文法",
+                }
+            ))
+        );
+        assert_eq!(
+            pointy_tag_end("|(文法)>  "),
+            Ok((
+                "  ",
+                PointyTagEnd {
+                    element: None,
+                    view: "文法",
+                }
+            ))
+        );
+    }
 
     #[test]
     fn test_pointy_tag_start_encode_cptml() {
