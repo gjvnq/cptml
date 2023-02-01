@@ -252,12 +252,34 @@ pub struct PointyTagEnd<'a> {
 
 impl<'a> PointyTagEnd<'a> {
     pub fn encode_cptml(&self) -> String {
-        todo!();
+        let mut ans = String::default();
+        ans.push_str("|");
+        if self.view.len() > 0 {
+            ans.push_str("(");
+            ans.push_str(self.view);
+            ans.push_str(")");
+        }
+        if let Some(element) = &self.element {
+            ans.push_str(&element.encode_cptml());
+        }
+        ans.push_str(">");
+        ans.to_string()
     }
 }
 
-pub fn pointy_tag_end<'a>(_input: &'a str) -> IResult<&'a str, PointyTagEnd<'a>> {
-    todo!()
+pub fn pointy_tag_end<'a>(input: &'a str) -> IResult<&'a str, PointyTagEnd<'a>> {
+    let (input, _) = recognize(char('|'))(input)?;
+    let (input, view) = opt(view_name)(input)?;
+    let (input, element) = opt(idfullname)(input)?;
+    let (input, _) = recognize(char('>'))(input)?;
+
+    Ok((
+        input,
+        PointyTagEnd {
+            element: element,
+            view: view.unwrap_or(""),
+        },
+    ))
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
