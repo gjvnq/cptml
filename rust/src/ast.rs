@@ -109,7 +109,7 @@ impl TagAttrValue {
     pub fn encode_cptml(&self) -> String {
         match self {
             TagAttrValue::Integer(i) => i.to_string(),
-            TagAttrValue::Boolean(b) => b.to_string()
+            TagAttrValue::Boolean(b) => b.to_string(),
         }
     }
 }
@@ -305,12 +305,49 @@ pub struct Comment<'a> {
 
 impl<'a> Comment<'a> {
     pub fn encode_cptml(&self) -> String {
-        todo!();
+        let mut ans = String::default();
+        ans.push_str("{-");
+        ans.push_str(self.src);
+        ans.push_str("-}");
+        ans.to_string()
     }
 }
 
-pub fn comment<'a>(_input: &'a str) -> IResult<&'a str, Comment<'a>> {
-    todo!()
+pub fn comment<'a>(input: &'a str) -> IResult<&'a str, Comment<'a>> {
+    let (input, _) = tag("{-")(input)?;
+
+    let mut depth = 1;
+    let mut input_chars = input.chars();
+    let mut n_bytes = 0;
+    let mut last_char = match input_chars.next() {
+        Some(ch) => ch,
+        None => {
+            return Err(NomErr(NomError::new(input, Eof)));
+        }
+    };
+    n_bytes += last_char.len_utf8();
+    while depth > 0 {
+        let cur_char = match input_chars.next() {
+            Some(ch) => ch,
+            None => {
+                return Err(NomErr(NomError::new(input, Eof)));
+            }
+        };
+        n_bytes += cur_char.len_utf8();
+        if last_char == '{' && cur_char == '-' {
+            depth += 1;
+        }
+        if last_char == '-' && cur_char == '}' {
+            depth -= 1;
+        }
+        last_char = cur_char;
+    }
+    return Ok((
+        &input[n_bytes..],
+        Comment {
+            src: &input[..n_bytes - 2],
+        },
+    ));
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -351,6 +388,36 @@ pub fn tex_code<'a>(_input: &'a str) -> IResult<&'a str, TexCode<'a>> {
 mod tests {
     use crate::ast::*;
     use nom::error::ErrorKind::{Alpha, Char, Digit, Eof, Tag};
+
+    #[test]
+    fn test_comment_encode_cptml() {
+        let src = "{--}";
+        assert_eq!(comment(src).unwrap().1.encode_cptml(), src);
+        let src = "{-hi 文法 -}";
+        assert_eq!(comment(src).unwrap().1.encode_cptml(), src);
+        let src = "{-{--}-}";
+        assert_eq!(comment(src).unwrap().1.encode_cptml(), src);
+        let src = "{-{-💩-}-}";
+        assert_eq!(comment(src).unwrap().1.encode_cptml(), src);
+    }
+
+    #[test]
+    fn test_comment() {
+        assert_eq!(comment("{--}"), Ok(("", Comment { src: "" })));
+        assert_eq!(comment("{--}\t"), Ok(("\t", Comment { src: "" })));
+        assert_eq!(
+            comment("{-hi 文法 -}"),
+            Ok(("", Comment { src: "hi 文法 " }))
+        );
+        assert_eq!(comment("{-{--}-}"), Ok(("", Comment { src: "{--}" })));
+        assert_eq!(
+            comment("{-{--}"),
+            Err(NomErr(NomError {
+                input: "{--}",
+                code: Eof
+            }))
+        );
+    }
 
     #[test]
     fn test_pointy_tag_end_encode_cptml() {
