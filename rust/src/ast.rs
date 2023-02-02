@@ -5,7 +5,7 @@ use nom::character::complete::{char, multispace0};
 use nom::combinator::{map, opt, recognize};
 use nom::error::Error as NomError;
 use nom::error::ErrorKind::{Alpha, Eof};
-use nom::multi::many0;
+use nom::multi::{many0, many1};
 use nom::sequence::{delimited, pair, separated_pair};
 use nom::Err::Error as NomErr;
 use nom::IResult;
@@ -352,19 +352,64 @@ pub fn comment<'a>(input: &'a str) -> IResult<&'a str, Comment<'a>> {
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct CodeBlock<'a> {
-    src: &'a str,
     lang: &'a str,
-    meaning: String,
+    separator: &'a str,
+    code: &'a str,
 }
 
 impl<'a> CodeBlock<'a> {
     pub fn encode_cptml(&self) -> String {
-        todo!();
+        let ticks = "`".repeat(self.code.matches('`').count());
+        format!("{}{}{}{}{}", ticks, self.lang, self.separator, self.code, ticks)
     }
 }
 
-pub fn codeblock<'a>(_input: &'a str) -> IResult<&'a str, CodeBlock<'a>> {
+pub fn codeblock_with_lang<'a>(_input: &'a str) -> IResult<&'a str, CodeBlock<'a>> {
     todo!()
+}
+
+pub fn codeblock_without_lang<'a>(input: &'a str) -> IResult<&'a str, CodeBlock<'a>> {
+    let (input, ticks) = many1(char('`'))(input)?;
+    let n_start_ticks = ticks.len();
+
+    let mut input_chars = input.chars();
+    let mut n_bytes_tot = 0;
+    let mut n_bytes_code = 0;
+    let mut n_cur_ticks = 0;
+    let mut last_char = 0;
+    loop {
+        let cur_char = match input_chars.next() {
+            Some(ch) => ch,
+            None => {
+                if n_cur_ticks < n_start_ticks {
+                    return Err(NomErr(NomError::new(input, Eof)));
+                } else {
+                    break;
+                }
+            }
+        };
+        n_bytes_tot += cur_char.len_utf8();
+        if cur_char == '`' {
+            n_cur_ticks += 1;
+        } else if n_cur_ticks >= n_start_ticks {
+            break;
+        } else {
+            n_cur_ticks = 0;
+            n_bytes_code += cur_char.len_utf8();
+        }
+    }
+    let code = &input[..n_bytes_code];
+    let input = &input[..n_bytes_tot];
+    return Ok((input, CodeBlock{
+        lang: "",
+        separator: "",
+        code: code
+    }))
+}
+
+pub fn codeblock<'a>(input: &'a str) -> IResult<&'a str, CodeBlock<'a>> {
+    // alt((codeblock_with_lang, codeblock_without_lang))(input)
+    codeblock_without_lang(input)
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -399,6 +444,19 @@ mod tests {
         assert_eq!(comment(src).unwrap().1.encode_cptml(), src);
         let src = "{-{-💩-}-}";
         assert_eq!(comment(src).unwrap().1.encode_cptml(), src);
+    }
+
+    #[test]
+    fn test_codeblock() {
+        assert_eq!(codeblock("` `"), Ok(("", CodeBlock { lang: "", separator: "", code: " " })));
+        assert_eq!(codeblock("`hi`"), Ok(("", CodeBlock { lang: " ", separator: "", code: "hi" })));
+        assert_eq!(codeblock("```"), Ok(("", CodeBlock { lang: "", separator: "", code: "`" })));
+        assert_eq!(codeblock("`rust`use`"), Ok(("", CodeBlock { lang: "rust", separator: "`", code: "use" })));
+        assert_eq!(codeblock("``rust`use```"), Ok(("", CodeBlock { lang: "rust", separator: "`", code: "use`" })));
+        assert_eq!(codeblock("`rust use`"), Ok(("", CodeBlock { lang: "", separator: "`", code: "rust use" })));
+        assert_eq!(codeblock("`rust\nuse`"), Ok(("", CodeBlock { lang: "rust", separator: "\n", code: "use" })));
+        assert_eq!(codeblock("```hi ``!```"), Ok(("", CodeBlock { lang: "", separator: "", code: "hi ``!" })));
+        assert_eq!(codeblock("```hi `````"), Ok(("", CodeBlock { lang: "", separator: "", code: "hi ``" })));
     }
 
     #[test]
