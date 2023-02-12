@@ -96,57 +96,82 @@ pub fn idfullname(input: &str) -> IResult<&str, IdFullName> {
     ))
 }
 
+// TODO: make the &'a str into Option<&'a str>
 #[derive(Debug, Clone, PartialEq)]
-pub enum TagAttrValue {
-    Integer(i64),
-    // Float(f64),
-    // String(str),
-    Boolean(bool),
+pub enum TagAttrValue<'a> {
+    Boolean(&'a str, bool),
+    Integer(&'a str, i64),
+    Float(&'a str, f64),
+    String(&'a str, String),
+    Url(&'a str, url::Url),
 }
 
-impl TagAttrValue {
+impl<'a> TagAttrValue<'a> {
     pub fn encode_cptml(&self) -> String {
         match self {
-            TagAttrValue::Integer(i) => i.to_string(),
-            TagAttrValue::Boolean(b) => b.to_string(),
+            TagAttrValue::Boolean(code, _) => code.to_string(),
+            TagAttrValue::Integer(code, _) => code.to_string(),
+            TagAttrValue::Float(code, _) => code.to_string(),
+            TagAttrValue::String(code, _) => code.to_string(),
+            TagAttrValue::Url(code, _) => code.to_string(),
         }
     }
 }
 
-pub fn parse_bool_true(input: &str) -> IResult<&str, bool> {
-    let (input, _) = tag("true")(input)?;
-    Ok((input, true))
+pub fn parse_bool_true(input: &str) -> IResult<&str, TagAttrValue> {
+    let (input, got) = tag("true")(input)?;
+    Ok((input, TagAttrValue::Boolean(got, true)))
 }
 
-pub fn parse_bool_false(input: &str) -> IResult<&str, bool> {
-    let (input, _) = tag("false")(input)?;
-    Ok((input, false))
+pub fn parse_bool_false(input: &str) -> IResult<&str, TagAttrValue> {
+    let (input, got) = tag("false")(input)?;
+    Ok((input, TagAttrValue::Boolean(got, false)))
 }
 
 pub fn tag_args_bool(input: &str) -> IResult<&str, TagAttrValue> {
-    let (input, flag) = alt((parse_bool_true, parse_bool_false))(input)?;
-    Ok((input, TagAttrValue::Boolean(flag)))
+    alt((parse_bool_true, parse_bool_false))(input)
 }
 
-// TODO: support underscores as thousands separator
-pub fn integer_hex(input: &str) -> IResult<&str, i64> {
-    let (input, _) = tag("0x")(input)?;
-    let (input, val) = complete::hex_digit1(input)?;
+// TODO: improve errors in case of invalid number
+pub fn integer_hex(input: &str) -> IResult<&str, TagAttrValue> {
+    let orig_input = input;
+    let (input, prefix) = tag("0x")(input)?;
+    let (input, val) = is_a("-0123456789abcdefABCDEF_")(input)?;
+    let mut tmp = String::new();
+    for c in val.chars() {
+        if c != '_' {
+            tmp.push(c);
+        }
+    }
     Ok((
         input,
-        i64::from_str_radix(val, 16).expect("valid hexadecimal integer"),
+        TagAttrValue::Integer(
+            &orig_input[..prefix.len() + val.len()],
+            i64::from_str_radix(val, 16).expect("valid hexadecimal integer"),
+        )
     ))
 }
 
-// TODO: support underscores as thousands separator
-pub fn integer_dec(input: &str) -> IResult<&str, i64> {
-    let (input, val) = complete::i64(input)?;
-    Ok((input, val))
+// TODO: improve errors in case of invalid number
+pub fn integer_dec(input: &str) -> IResult<&str, TagAttrValue> {
+    let (input, val) = is_a("-0123456789_")(input)?;
+    let mut tmp = String::new();
+    for c in val.chars() {
+        if c != '_' {
+            tmp.push(c);
+        }
+    }
+    Ok((
+        input,
+        TagAttrValue::Integer(
+            val,
+            i64::from_str_radix(&tmp, 10).expect("valid decimal integer")
+        )
+    ))
 }
 
 pub fn tag_args_integer(input: &str) -> IResult<&str, TagAttrValue> {
-    let (input, val) = alt((integer_hex, integer_dec))(input)?;
-    Ok((input, TagAttrValue::Integer(val)))
+    alt((integer_hex, integer_dec))(input)
 }
 
 pub fn tag_args_pair<'a>(
@@ -163,7 +188,7 @@ pub fn tag_args_pair<'a>(
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct CurlyTagStart<'a> {
     element: IdFullName<'a>,
-    args: Vec<(&'a str, IdFullName<'a>, TagAttrValue)>,
+    args: Vec<(&'a str, IdFullName<'a>, TagAttrValue<'a>)>,
     whitespace: &'a str,
 }
 
@@ -194,7 +219,7 @@ pub fn curly_tag_start<'a>(input: &'a str) -> IResult<&'a str, CurlyTagStart<'a>
 pub struct PointyTagStart<'a> {
     element: IdFullName<'a>,
     view: &'a str,
-    args: Vec<(&'a str, IdFullName<'a>, TagAttrValue)>,
+    args: Vec<(&'a str, IdFullName<'a>, TagAttrValue<'a>)>,
     whitespace: &'a str,
 }
 
@@ -447,7 +472,7 @@ pub fn tex_code<'a>(_input: &'a str) -> IResult<&'a str, TexCode<'a>> {
 #[cfg(test)]
 mod tests {
     use crate::ast::*;
-    use nom::error::ErrorKind::{Alpha, Char, Digit, Eof, Tag};
+    use nom::error::ErrorKind::{Alpha, Char, IsA, Eof, Tag};
 
     #[test]
     fn test_comment_encode_cptml() {
@@ -626,7 +651,7 @@ mod tests {
                             namespace: "html",
                             localname: "n"
                         },
-                        TagAttrValue::Integer(3)
+                        TagAttrValue::Integer("3", 3)
                     )],
                     whitespace: " ",
                 }
@@ -756,7 +781,7 @@ mod tests {
                                 namespace: "!",
                                 localname: "id"
                             },
-                            TagAttrValue::Integer(4)
+                            TagAttrValue::Integer("4", 4)
                         ),
                         (
                             " ",
@@ -764,7 +789,7 @@ mod tests {
                                 namespace: "html",
                                 localname: "show"
                             },
-                            TagAttrValue::Boolean(false)
+                            TagAttrValue::Boolean("false", false)
                         )
                     ],
                     whitespace: " ",
@@ -779,19 +804,19 @@ mod tests {
             tag_args_integer(""),
             Err(NomErr(nom::error::Error {
                 input: "",
-                code: Digit
+                code: IsA
             }))
         );
-        assert_eq!(tag_args_integer("0"), Ok(("", TagAttrValue::Integer(0))));
+        assert_eq!(tag_args_integer("0"), Ok(("", TagAttrValue::Integer("0", 0))));
         assert_eq!(
-            tag_args_integer("874938432809"),
-            Ok(("", TagAttrValue::Integer(874938432809)))
+            tag_args_integer("87493_8_432809"),
+            Ok(("", TagAttrValue::Integer("87493_8_432809", 874938432809)))
         );
         assert_eq!(
-            tag_args_integer("-34343432"),
-            Ok(("", TagAttrValue::Integer(-34343432)))
+            tag_args_integer("-34_343432"),
+            Ok(("", TagAttrValue::Integer("-34_343432", -34343432)))
         );
-        assert_eq!(tag_args_integer("0xA"), Ok(("", TagAttrValue::Integer(10))));
+        assert_eq!(tag_args_integer("0xA"), Ok(("", TagAttrValue::Integer("0xA", 10))));
     }
 
     #[test]
@@ -803,10 +828,10 @@ mod tests {
                 code: Tag
             }))
         );
-        assert_eq!(tag_args_bool("true"), Ok(("", TagAttrValue::Boolean(true))));
+        assert_eq!(tag_args_bool("true"), Ok(("", TagAttrValue::Boolean("true", true))));
         assert_eq!(
             tag_args_bool("false"),
-            Ok(("", TagAttrValue::Boolean(false)))
+            Ok(("", TagAttrValue::Boolean("false", false)))
         );
         assert_eq!(
             tag_args_bool("t"),
