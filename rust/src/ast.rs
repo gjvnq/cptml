@@ -1,7 +1,6 @@
 use nom::branch::alt;
-use nom::bytes::complete::tag;
-use nom::character::complete;
-use nom::character::complete::{char, multispace0};
+use nom::bytes::complete::{tag, is_a};
+use nom::character::complete::{self, char, multispace0};
 use nom::combinator::{map, opt, recognize};
 use nom::error::Error as NomError;
 use nom::error::ErrorKind::{Alpha, Eof};
@@ -364,19 +363,24 @@ impl<'a> CodeBlock<'a> {
     }
 }
 
-pub fn codeblock_with_lang<'a>(_input: &'a str) -> IResult<&'a str, CodeBlock<'a>> {
-    todo!()
+pub fn codeblock_lang<'a>(input: &'a str) -> IResult<&'a str, (&'a str, &'a str)> {
+    let (input, lang) = xid_name(input)?;
+    let (input, separator) = alt((is_a("\t\t"), is_a("\n")))(input)?;
+    return Ok((input, (lang, separator)))
 }
 
-pub fn codeblock_without_lang<'a>(input: &'a str) -> IResult<&'a str, CodeBlock<'a>> {
+
+pub fn codeblock_regular<'a>(input: &'a str) -> IResult<&'a str, CodeBlock<'a>> {
     let (input, ticks) = many1(char('`'))(input)?;
     let n_start_ticks = ticks.len();
 
-    let mut input_chars = input.chars();
+    let (input, lang_and_sep) = opt(codeblock_lang)(input)?;
+    let (lang, separator) = lang_and_sep.unwrap_or_default();
+
+    let mut input_chars = input.chars().peekable();
     let mut n_bytes_tot = 0;
     let mut n_bytes_code = 0;
     let mut n_cur_ticks = 0;
-    let mut last_char = 0;
     loop {
         let cur_char = match input_chars.next() {
             Some(ch) => ch,
@@ -384,6 +388,7 @@ pub fn codeblock_without_lang<'a>(input: &'a str) -> IResult<&'a str, CodeBlock<
                 if n_cur_ticks < n_start_ticks {
                     return Err(NomErr(NomError::new(input, Eof)));
                 } else {
+                    n_bytes_code += (n_cur_ticks-n_start_ticks)*'`'.len_utf8();
                     break;
                 }
             }
@@ -391,25 +396,35 @@ pub fn codeblock_without_lang<'a>(input: &'a str) -> IResult<&'a str, CodeBlock<
         n_bytes_tot += cur_char.len_utf8();
         if cur_char == '`' {
             n_cur_ticks += 1;
-        } else if n_cur_ticks >= n_start_ticks {
-            break;
         } else {
+            n_bytes_code += n_cur_ticks*'`'.len_utf8();
             n_cur_ticks = 0;
             n_bytes_code += cur_char.len_utf8();
         }
+        if n_cur_ticks == n_start_ticks && input_chars.peek() != Some(&'`') {
+            break;
+        }
     }
     let code = &input[..n_bytes_code];
-    let input = &input[..n_bytes_tot];
+    let input = &input[n_bytes_tot..];
+    return Ok((input, CodeBlock{
+        lang,
+        separator,
+        code
+    }))
+}
+
+pub fn codeblock_special_case_triple_backtick<'a>(input: &'a str) -> IResult<&'a str, CodeBlock<'a>> {
+    let (input, _) = tag("`\t\t``")(input)?;
     return Ok((input, CodeBlock{
         lang: "",
-        separator: "",
-        code: code
+        separator: "\t\t",
+        code: "`"
     }))
 }
 
 pub fn codeblock<'a>(input: &'a str) -> IResult<&'a str, CodeBlock<'a>> {
-    // alt((codeblock_with_lang, codeblock_without_lang))(input)
-    codeblock_without_lang(input)
+    alt((codeblock_special_case_triple_backtick, codeblock_regular))(input)
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -449,11 +464,12 @@ mod tests {
     #[test]
     fn test_codeblock() {
         assert_eq!(codeblock("` `"), Ok(("", CodeBlock { lang: "", separator: "", code: " " })));
-        assert_eq!(codeblock("`hi`"), Ok(("", CodeBlock { lang: " ", separator: "", code: "hi" })));
-        assert_eq!(codeblock("```"), Ok(("", CodeBlock { lang: "", separator: "", code: "`" })));
-        assert_eq!(codeblock("`rust`use`"), Ok(("", CodeBlock { lang: "rust", separator: "`", code: "use" })));
-        assert_eq!(codeblock("``rust`use```"), Ok(("", CodeBlock { lang: "rust", separator: "`", code: "use`" })));
-        assert_eq!(codeblock("`rust use`"), Ok(("", CodeBlock { lang: "", separator: "`", code: "rust use" })));
+        assert_eq!(codeblock("`\t\t``"), Ok(("", CodeBlock { lang: "", separator: "\t\t", code: "`" })));
+        assert_eq!(codeblock("`hi`"), Ok(("", CodeBlock { lang: "", separator: "", code: "hi" })));
+        assert_eq!(codeblock("`rust\t\tuse`"), Ok(("", CodeBlock { lang: "rust", separator: "\t\t", code: "use" })));
+        assert_eq!(codeblock("`rust`use`"), Ok(("use`", CodeBlock { lang: "", separator: "", code: "rust" })));
+        assert_eq!(codeblock("``rust`use```"), Ok(("", CodeBlock { lang: "", separator: "", code: "rust`use`" })));
+        assert_eq!(codeblock("`rust use`"), Ok(("", CodeBlock { lang: "", separator: "", code: "rust use" })));
         assert_eq!(codeblock("`rust\nuse`"), Ok(("", CodeBlock { lang: "rust", separator: "\n", code: "use" })));
         assert_eq!(codeblock("```hi ``!```"), Ok(("", CodeBlock { lang: "", separator: "", code: "hi ``!" })));
         assert_eq!(codeblock("```hi `````"), Ok(("", CodeBlock { lang: "", separator: "", code: "hi ``" })));
