@@ -174,6 +174,18 @@ pub fn tag_args_integer(input: &str) -> IResult<&str, TagAttrValue> {
     alt((integer_hex, integer_dec))(input)
 }
 
+pub fn tag_args_float(_input: &str) -> IResult<&str, TagAttrValue> {
+    todo!()
+}
+
+pub fn tag_args_string(_input: &str) -> IResult<&str, TagAttrValue> {
+    todo!()
+}
+
+pub fn tag_args_url(_input: &str) -> IResult<&str, TagAttrValue> {
+    todo!()
+}
+
 pub fn tag_args_pair<'a>(
     input: &'a str,
 ) -> IResult<&'a str, (&'a str, IdFullName<'a>, TagAttrValue)> {
@@ -797,6 +809,34 @@ mod tests {
             ))
         );
     }
+
+    #[test]
+    fn test_tag_args_float() {
+        assert_eq!(
+            tag_args_float(""),
+            Err(NomErr(nom::error::Error {
+                input: "",
+                code: IsA
+            }))
+        );
+        assert_eq!(tag_args_float("0.0"), Ok(("", TagAttrValue::Float("0", 0.0))));
+        assert_eq!(tag_args_float("-1.0"), Ok(("", TagAttrValue::Float("-1.0", 0.0))));
+        assert_eq!(tag_args_float(".1"), Ok(("", TagAttrValue::Float(".1", 0.1))));
+        assert_eq!(tag_args_float("3.1_4"), Ok(("", TagAttrValue::Float("3.1_4", 3.14))));
+        assert_eq!(tag_args_float("1E0"), Ok(("", TagAttrValue::Float("1E0", 1.0))));
+        assert_eq!(tag_args_float("314E-2"), Ok(("", TagAttrValue::Float("314E-2", 3.14))));
+    }
+
+    // #[test]
+    // fn test_tag_args_string() {
+    //     assert_eq!(tag_args_string(""), Ok(("", 0)));
+    // }
+
+    // #[test]
+    // fn test_tag_args_url() {
+    //     assert_eq!(tag_args_url("<example.com>"), Ok(("", 0)));
+    // }
+
 
     #[test]
     fn test_tag_integer() {
