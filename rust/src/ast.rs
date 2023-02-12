@@ -1,5 +1,5 @@
 use nom::branch::alt;
-use nom::bytes::complete::{tag, is_a};
+use nom::bytes::complete::{is_a, tag};
 use nom::character::complete::{self, char, multispace0};
 use nom::combinator::{map, opt, recognize};
 use nom::error::Error as NomError;
@@ -148,7 +148,7 @@ pub fn integer_hex(input: &str) -> IResult<&str, TagAttrValue> {
         TagAttrValue::Integer(
             &orig_input[..prefix.len() + val.len()],
             i64::from_str_radix(val, 16).expect("valid hexadecimal integer"),
-        )
+        ),
     ))
 }
 
@@ -165,8 +165,8 @@ pub fn integer_dec(input: &str) -> IResult<&str, TagAttrValue> {
         input,
         TagAttrValue::Integer(
             val,
-            i64::from_str_radix(&tmp, 10).expect("valid decimal integer")
-        )
+            i64::from_str_radix(&tmp, 10).expect("valid decimal integer"),
+        ),
     ))
 }
 
@@ -396,16 +396,18 @@ pub struct CodeBlock<'a> {
 impl<'a> CodeBlock<'a> {
     pub fn encode_cptml(&self) -> String {
         let ticks = "`".repeat(self.code.matches('`').count());
-        format!("{}{}{}{}{}", ticks, self.lang, self.separator, self.code, ticks)
+        format!(
+            "{}{}{}{}{}",
+            ticks, self.lang, self.separator, self.code, ticks
+        )
     }
 }
 
 pub fn codeblock_lang<'a>(input: &'a str) -> IResult<&'a str, (&'a str, &'a str)> {
     let (input, lang) = xid_name(input)?;
     let (input, separator) = alt((is_a("\t\t"), is_a("\n")))(input)?;
-    return Ok((input, (lang, separator)))
+    return Ok((input, (lang, separator)));
 }
-
 
 pub fn codeblock_regular<'a>(input: &'a str) -> IResult<&'a str, CodeBlock<'a>> {
     let (input, ticks) = many1(char('`'))(input)?;
@@ -425,7 +427,7 @@ pub fn codeblock_regular<'a>(input: &'a str) -> IResult<&'a str, CodeBlock<'a>> 
                 if n_cur_ticks < n_start_ticks {
                     return Err(NomErr(NomError::new(input, Eof)));
                 } else {
-                    n_bytes_code += (n_cur_ticks-n_start_ticks)*'`'.len_utf8();
+                    n_bytes_code += (n_cur_ticks - n_start_ticks) * '`'.len_utf8();
                     break;
                 }
             }
@@ -434,7 +436,7 @@ pub fn codeblock_regular<'a>(input: &'a str) -> IResult<&'a str, CodeBlock<'a>> 
         if cur_char == '`' {
             n_cur_ticks += 1;
         } else {
-            n_bytes_code += n_cur_ticks*'`'.len_utf8();
+            n_bytes_code += n_cur_ticks * '`'.len_utf8();
             n_cur_ticks = 0;
             n_bytes_code += cur_char.len_utf8();
         }
@@ -444,20 +446,28 @@ pub fn codeblock_regular<'a>(input: &'a str) -> IResult<&'a str, CodeBlock<'a>> 
     }
     let code = &input[..n_bytes_code];
     let input = &input[n_bytes_tot..];
-    return Ok((input, CodeBlock{
-        lang,
-        separator,
-        code
-    }))
+    return Ok((
+        input,
+        CodeBlock {
+            lang,
+            separator,
+            code,
+        },
+    ));
 }
 
-pub fn codeblock_special_case_triple_backtick<'a>(input: &'a str) -> IResult<&'a str, CodeBlock<'a>> {
+pub fn codeblock_special_case_triple_backtick<'a>(
+    input: &'a str,
+) -> IResult<&'a str, CodeBlock<'a>> {
     let (input, _) = tag("`\t\t``")(input)?;
-    return Ok((input, CodeBlock{
-        lang: "",
-        separator: "\t\t",
-        code: "`"
-    }))
+    return Ok((
+        input,
+        CodeBlock {
+            lang: "",
+            separator: "\t\t",
+            code: "`",
+        },
+    ));
 }
 
 pub fn codeblock<'a>(input: &'a str) -> IResult<&'a str, CodeBlock<'a>> {
@@ -484,7 +494,7 @@ pub fn tex_code<'a>(_input: &'a str) -> IResult<&'a str, TexCode<'a>> {
 #[cfg(test)]
 mod tests {
     use crate::ast::*;
-    use nom::error::ErrorKind::{Alpha, Char, IsA, Eof, Tag};
+    use nom::error::ErrorKind::{Alpha, Char, Eof, IsA, Tag};
 
     #[test]
     fn test_comment_encode_cptml() {
@@ -500,16 +510,116 @@ mod tests {
 
     #[test]
     fn test_codeblock() {
-        assert_eq!(codeblock("` `"), Ok(("", CodeBlock { lang: "", separator: "", code: " " })));
-        assert_eq!(codeblock("`\t\t``"), Ok(("", CodeBlock { lang: "", separator: "\t\t", code: "`" })));
-        assert_eq!(codeblock("`hi`"), Ok(("", CodeBlock { lang: "", separator: "", code: "hi" })));
-        assert_eq!(codeblock("`rust\t\tuse`"), Ok(("", CodeBlock { lang: "rust", separator: "\t\t", code: "use" })));
-        assert_eq!(codeblock("`rust`use`"), Ok(("use`", CodeBlock { lang: "", separator: "", code: "rust" })));
-        assert_eq!(codeblock("``rust`use```"), Ok(("", CodeBlock { lang: "", separator: "", code: "rust`use`" })));
-        assert_eq!(codeblock("`rust use`"), Ok(("", CodeBlock { lang: "", separator: "", code: "rust use" })));
-        assert_eq!(codeblock("`rust\nuse`"), Ok(("", CodeBlock { lang: "rust", separator: "\n", code: "use" })));
-        assert_eq!(codeblock("```hi ``!```"), Ok(("", CodeBlock { lang: "", separator: "", code: "hi ``!" })));
-        assert_eq!(codeblock("```hi `````"), Ok(("", CodeBlock { lang: "", separator: "", code: "hi ``" })));
+        assert_eq!(
+            codeblock("` `"),
+            Ok((
+                "",
+                CodeBlock {
+                    lang: "",
+                    separator: "",
+                    code: " "
+                }
+            ))
+        );
+        assert_eq!(
+            codeblock("`\t\t``"),
+            Ok((
+                "",
+                CodeBlock {
+                    lang: "",
+                    separator: "\t\t",
+                    code: "`"
+                }
+            ))
+        );
+        assert_eq!(
+            codeblock("`hi`"),
+            Ok((
+                "",
+                CodeBlock {
+                    lang: "",
+                    separator: "",
+                    code: "hi"
+                }
+            ))
+        );
+        assert_eq!(
+            codeblock("`rust\t\tuse`"),
+            Ok((
+                "",
+                CodeBlock {
+                    lang: "rust",
+                    separator: "\t\t",
+                    code: "use"
+                }
+            ))
+        );
+        assert_eq!(
+            codeblock("`rust`use`"),
+            Ok((
+                "use`",
+                CodeBlock {
+                    lang: "",
+                    separator: "",
+                    code: "rust"
+                }
+            ))
+        );
+        assert_eq!(
+            codeblock("``rust`use```"),
+            Ok((
+                "",
+                CodeBlock {
+                    lang: "",
+                    separator: "",
+                    code: "rust`use`"
+                }
+            ))
+        );
+        assert_eq!(
+            codeblock("`rust use`"),
+            Ok((
+                "",
+                CodeBlock {
+                    lang: "",
+                    separator: "",
+                    code: "rust use"
+                }
+            ))
+        );
+        assert_eq!(
+            codeblock("`rust\nuse`"),
+            Ok((
+                "",
+                CodeBlock {
+                    lang: "rust",
+                    separator: "\n",
+                    code: "use"
+                }
+            ))
+        );
+        assert_eq!(
+            codeblock("```hi ``!```"),
+            Ok((
+                "",
+                CodeBlock {
+                    lang: "",
+                    separator: "",
+                    code: "hi ``!"
+                }
+            ))
+        );
+        assert_eq!(
+            codeblock("```hi `````"),
+            Ok((
+                "",
+                CodeBlock {
+                    lang: "",
+                    separator: "",
+                    code: "hi ``"
+                }
+            ))
+        );
     }
 
     #[test]
@@ -819,12 +929,30 @@ mod tests {
                 code: IsA
             }))
         );
-        assert_eq!(tag_args_float("0.0"), Ok(("", TagAttrValue::Float("0", 0.0))));
-        assert_eq!(tag_args_float("-1.0"), Ok(("", TagAttrValue::Float("-1.0", 0.0))));
-        assert_eq!(tag_args_float(".1"), Ok(("", TagAttrValue::Float(".1", 0.1))));
-        assert_eq!(tag_args_float("3.1_4"), Ok(("", TagAttrValue::Float("3.1_4", 3.14))));
-        assert_eq!(tag_args_float("1E0"), Ok(("", TagAttrValue::Float("1E0", 1.0))));
-        assert_eq!(tag_args_float("314E-2"), Ok(("", TagAttrValue::Float("314E-2", 3.14))));
+        assert_eq!(
+            tag_args_float("0.0"),
+            Ok(("", TagAttrValue::Float("0", 0.0)))
+        );
+        assert_eq!(
+            tag_args_float("-1.0"),
+            Ok(("", TagAttrValue::Float("-1.0", 0.0)))
+        );
+        assert_eq!(
+            tag_args_float(".1"),
+            Ok(("", TagAttrValue::Float(".1", 0.1)))
+        );
+        assert_eq!(
+            tag_args_float("3.1_4"),
+            Ok(("", TagAttrValue::Float("3.1_4", 3.14)))
+        );
+        assert_eq!(
+            tag_args_float("1E0"),
+            Ok(("", TagAttrValue::Float("1E0", 1.0)))
+        );
+        assert_eq!(
+            tag_args_float("314E-2"),
+            Ok(("", TagAttrValue::Float("314E-2", 3.14)))
+        );
     }
 
     // #[test]
@@ -837,7 +965,6 @@ mod tests {
     //     assert_eq!(tag_args_url("<example.com>"), Ok(("", 0)));
     // }
 
-
     #[test]
     fn test_tag_integer() {
         assert_eq!(
@@ -847,7 +974,10 @@ mod tests {
                 code: IsA
             }))
         );
-        assert_eq!(tag_args_integer("0"), Ok(("", TagAttrValue::Integer("0", 0))));
+        assert_eq!(
+            tag_args_integer("0"),
+            Ok(("", TagAttrValue::Integer("0", 0)))
+        );
         assert_eq!(
             tag_args_integer("87493_8_432809"),
             Ok(("", TagAttrValue::Integer("87493_8_432809", 874938432809)))
@@ -856,7 +986,10 @@ mod tests {
             tag_args_integer("-34_343432"),
             Ok(("", TagAttrValue::Integer("-34_343432", -34343432)))
         );
-        assert_eq!(tag_args_integer("0xA"), Ok(("", TagAttrValue::Integer("0xA", 10))));
+        assert_eq!(
+            tag_args_integer("0xA"),
+            Ok(("", TagAttrValue::Integer("0xA", 10)))
+        );
     }
 
     #[test]
@@ -868,7 +1001,10 @@ mod tests {
                 code: Tag
             }))
         );
-        assert_eq!(tag_args_bool("true"), Ok(("", TagAttrValue::Boolean("true", true))));
+        assert_eq!(
+            tag_args_bool("true"),
+            Ok(("", TagAttrValue::Boolean("true", true)))
+        );
         assert_eq!(
             tag_args_bool("false"),
             Ok(("", TagAttrValue::Boolean("false", false)))
