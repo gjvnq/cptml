@@ -174,8 +174,21 @@ pub fn tag_args_integer(input: &str) -> IResult<&str, TagAttrValue> {
     alt((integer_hex, integer_dec))(input)
 }
 
-pub fn tag_args_float(_input: &str) -> IResult<&str, TagAttrValue> {
-    todo!()
+pub fn tag_args_float(input: &str) -> IResult<&str, TagAttrValue> {
+    let (input, val) = is_a("-0123456789.eE+_")(input)?;
+    let mut tmp = String::new();
+    for c in val.chars() {
+        if c != '_' {
+            tmp.push(c);
+        }
+    }
+    Ok((
+        input,
+        TagAttrValue::Float(
+            val,
+            tmp.parse().expect("valid float"),
+        ),
+    ))
 }
 
 pub fn tag_args_string(_input: &str) -> IResult<&str, TagAttrValue> {
@@ -931,11 +944,11 @@ mod tests {
         );
         assert_eq!(
             tag_args_float("0.0"),
-            Ok(("", TagAttrValue::Float("0", 0.0)))
+            Ok(("", TagAttrValue::Float("0.0", 0.0)))
         );
         assert_eq!(
             tag_args_float("-1.0"),
-            Ok(("", TagAttrValue::Float("-1.0", 0.0)))
+            Ok(("", TagAttrValue::Float("-1.0", -1.0)))
         );
         assert_eq!(
             tag_args_float(".1"),
@@ -952,6 +965,10 @@ mod tests {
         assert_eq!(
             tag_args_float("314E-2"),
             Ok(("", TagAttrValue::Float("314E-2", 3.14)))
+        );
+        assert_eq!(
+            tag_args_float("314E+2"),
+            Ok(("", TagAttrValue::Float("314E+2", 31400.0)))
         );
     }
 
