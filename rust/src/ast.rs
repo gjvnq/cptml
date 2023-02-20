@@ -1,10 +1,10 @@
 use nom::branch::alt;
-use nom::bytes::complete::{is_a, tag};
-use nom::character::complete::{self, char, multispace0};
+use nom::bytes::complete::{is_a, tag, take};
+use nom::character::complete::{char, multispace0, one_of};
 use nom::combinator::{map, opt, recognize};
 use nom::error::Error as NomError;
-use nom::error::ErrorKind::{Alpha, Eof};
-use nom::multi::{many0, many1};
+use nom::error::ErrorKind::{self, Alpha, Eof};
+use nom::multi::{many0, many1, many_m_n};
 use nom::sequence::{delimited, pair, separated_pair};
 use nom::Err::Error as NomErr;
 use nom::IResult;
@@ -191,8 +191,77 @@ pub fn tag_args_float(input: &str) -> IResult<&str, TagAttrValue> {
     ))
 }
 
-pub fn tag_args_string(_input: &str) -> IResult<&str, TagAttrValue> {
-    todo!()
+pub fn parse_special_char(skip_slash: bool, input: &str) -> IResult<&str, (char, usize)> {
+    let (input, _) = match skip_slash {
+        true => (input, ""),
+        false => tag("\\")(input)?
+    };
+    let mut bytes_taken: usize = match skip_slash {
+        false => 1,
+        true => 0,
+    };
+    let (input, c) = take(1 as u8)(input)?;
+    bytes_taken += 1;
+    match c {
+        "n" => return Ok((input, ('\n', bytes_taken))), // new line
+        "r" => return Ok((input, ('\r', bytes_taken))), // return carriage
+        "t" => return Ok((input, ('\t', bytes_taken))), // tab
+        "\\" => return Ok((input, ('\\', bytes_taken))), // slash
+        "0" => return Ok((input, ('\0', bytes_taken))), // null byte
+        "\"" => return Ok((input, ('\"', bytes_taken))), // double quote
+        "\'" => return Ok((input, ('\'', bytes_taken))), // single quote
+        "{" => return Ok((input, ('{', bytes_taken))), // open curly brace
+        "}" => return Ok((input, ('}', bytes_taken))), // close curly brace
+        "<" => return Ok((input, ('<', bytes_taken))), // less than
+        ">" => return Ok((input, ('>', bytes_taken))), // grater than
+        "s" => return Ok((input, (' ', bytes_taken))), // regular space
+        "-" => return Ok((input, ('\u{00AD}', bytes_taken))), // soft hyphen
+        " " => return Ok((input, ('\u{00A0}', bytes_taken))), // non breaking space
+        "u" => {
+            let (input, _) = tag("{")(input)?;
+            let (input, hex) = many_m_n(2,6, one_of("0123456789ABCDEFabcdef"))(input)?;
+            let (input, _) = tag("}")(input)?;
+            let hex: String = hex.iter().collect();
+            bytes_taken += hex.len() + "{}".len();
+            let hex = u32::from_str_radix(&hex, 16).expect("valid hexadecimal integer");
+            let hex: char = match char::from_u32(hex) {
+                Some(c) => c,
+                None => {
+                    return Err(NomErr(NomError::new(input, ErrorKind::Char)));
+                }
+            };
+            return Ok((input, (hex, bytes_taken)));
+        },
+        _ => { return Err(NomErr(NomError::new(input, ErrorKind::Char))); }
+    };
+}
+
+pub fn take_char(input: &str) -> IResult<&str, char> {
+    let (input, s) = take(1 as usize)(input)?;
+    Ok((input, s.chars().next().unwrap()))
+}
+
+#[allow(unused_assignments)]
+pub fn tag_args_string(input: &str) -> IResult<&str, TagAttrValue> {
+    let orig_input = input;
+    let (input, _) = tag("\"")(input)?;
+    let mut ans = String::default();
+    let mut input = input;
+    let mut ch = '\0';
+    let mut bytes_taken = 0;
+    let mut n_bytes = 0;
+    loop {
+        (input, ch) = take_char(input)?;
+        bytes_taken += ch.len_utf8();
+        if ch == '\\' {
+            (input, (ch, n_bytes)) = parse_special_char(true, input)?;
+            bytes_taken += n_bytes;
+        } else if ch == '\"' {
+            bytes_taken += 1;
+            return Ok((input, TagAttrValue::String(&orig_input[0..bytes_taken], ans)));
+        }
+        ans.push(ch);
+    }
 }
 
 pub fn tag_args_url(_input: &str) -> IResult<&str, TagAttrValue> {
@@ -972,10 +1041,36 @@ mod tests {
         );
     }
 
-    // #[test]
-    // fn test_tag_args_string() {
-    //     assert_eq!(tag_args_string(""), Ok(("", 0)));
-    // }
+    #[test]
+    fn test_parse_special_char() {
+        assert_eq!(parse_special_char(false, "\\n"), Ok(("", ('\n', 2))));
+        assert_eq!(parse_special_char(false, "\\n "), Ok((" ", ('\n', 2))));
+        assert_eq!(parse_special_char(false, "\\r"), Ok(("", ('\r', 2))));
+        assert_eq!(parse_special_char(false, "\\r\n"), Ok(("\n", ('\r', 2))));
+        assert_eq!(parse_special_char(false, "\\t"), Ok(("", ('\t', 2))));
+        assert_eq!(parse_special_char(false, "\\\\"), Ok(("", ('\\', 2))));
+        assert_eq!(parse_special_char(false, "\\\""), Ok(("", ('\"', 2))));
+        assert_eq!(parse_special_char(false, "\\'"), Ok(("", ('\'', 2))));
+        assert_eq!(parse_special_char(false, "\\{"), Ok(("", ('{', 2))));
+        assert_eq!(parse_special_char(false, "\\}"), Ok(("", ('}', 2))));
+        assert_eq!(parse_special_char(false, "\\<"), Ok(("", ('<', 2))));
+        assert_eq!(parse_special_char(false, "\\>"), Ok(("", ('>', 2))));
+        assert_eq!(parse_special_char(false, "\\-"), Ok(("", ('\u{00AD}', 2))));
+        assert_eq!(parse_special_char(false, "\\ "), Ok(("", ('\u{00A0}', 2))));
+        assert_eq!(parse_special_char(false, "\\s"), Ok(("", (' ', 2))));
+        assert_eq!(parse_special_char(false, "\\u{0000}"), Ok(("", ('\0', 8))));
+        assert_eq!(parse_special_char(false, "\\u{1F531}"), Ok(("", ('🔱', 9))));
+        assert_eq!(parse_special_char(false, "\\u{01F531}"), Ok(("", ('🔱', 10))));
+    }
+
+    #[test]
+    fn test_tag_args_string() {
+        assert_eq!(tag_args_string(r#""""#), Ok(("", TagAttrValue::String(r#""""#, "".to_string()))));
+        assert_eq!(tag_args_string(r#""" "#), Ok((" ", TagAttrValue::String(r#""""#, "".to_string()))));
+        assert_eq!(tag_args_string(r#""3434""#), Ok(("", TagAttrValue::String(r#""3434""#, "3434".to_string()))));
+        assert_eq!(tag_args_string(r#""\"""#), Ok(("", TagAttrValue::String(r#""\"""#, "\"".to_string()))));
+        assert_eq!(tag_args_string(r#""\\""#), Ok(("", TagAttrValue::String(r#""\\""#, "\\".to_string()))));
+    }
 
     // #[test]
     // fn test_tag_args_url() {
