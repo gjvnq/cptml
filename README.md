@@ -197,107 +197,25 @@ The view is specified in the beginning of the path and separated with a vertical
 
 The search is always depth-first.
 
-## API
+## Planned Typesetting features
 
-*Warning: Work in Progress*
+Basic ones: paragraph, bold, italic, striked, underlined, overlined, color, quote, blockquote, code, image.
 
-```idl
-interface Document {
-  attribute sequence<Node> Nodes;
-  // namespace prefix -> namespace URI
-  attribute record<UTF8String, UTF8String> Namespaces;
-  attribute boolean IgnoreIncludes;
-
-  UTF8String     writeAsString();
-  ByteString     writeAsBytes();
-
-  Node           getRoot();
-  Node?          getOneByPath(UTF8String path);
-  sequence<Node> getAllByPath(UTF8String path);
-
-  void           addNamespace(UTF8String prefix, UTF8String uri);
-  boolean        hasNamespace(UTF8String prefixOrUri);
-  // returns false if there are elements with the requested namespace
-  boolean        delNamespace(UTF8String prefixOrUri);
-
-}
-
-interface Name {
-  attribute UTF8String FullNamespace;
-  attribute UTF8String NamespacePrefix;
-  attribute UTF8String LocalName;
-  attribute Document document;
-
-  UTF8String     getShort();
-  UTF8String     getLong();
-  // Return false if the namespace isn't set up on the document
-  boolean        setShort(UTF8String newName);
-  boolean        setLong(UTF8String newName);
-}
-
-enum NodeKind {
-	"text",
-	"comment",
-	"element",
-	"marker"
-};
-
-enum AttrValueType {
-	"string",
-	"int",
-	"float",
-	"boolean",
-	"none"
-};
-
-typedef (UTF8String or
-         int or
-         float or
-         boolean) AttrValue;
-
-interface Node {
-  attribute Name Name;
-  attribute sequence<Attribute> Attributes;
-  attribute sequence<Node> Children;
-  attribute UTF8String view;
-
-  NodeKind        nodeKind();
-  UTF8String      getInnerText();
-  UTF8String      getPath();
-  UTF8String      getPathRelativeTo(Node node);
-  Node?           getParent();
-  void            setParent(Node newParent);
-
-  Node            deepCopy();
-  Node            shallowCopy();
-
-  Node?           getOneByPath(UTF8String path);
-  sequence<Node>  getAllByPath(UTF8String path);
+Intermediary ones:
+  * Tables
+  * Multiple readings (like TEI's `<choice>`)
+  * Interlinear annotations (mainly for ruby)
+  * Leipzig annotations
+  * Diff annotations
+  * Leiden conventions
+  * Academic citations
+  * Parallel texts
+  * Multiple columns
   
-  // indexes count text nodes
-  void            addChildAfter(Node child, int index);
-  Node?           getChildAt(int index);
-  boolean         delChildAt(int index);
-  void            addChild(Node child);
-  boolean         delChild(Node child);
-  boolean         replaceChild(Node old, Node new);
-
-  void            sortAttributes();
-  boolean         hasAttribute(Name name);
-  void            delAttribute(Name name);
-  
-  AttrValue?      getAttribute(Name name);
-  AttrValueType   getAttributeType(Name name);
-  UTF8String?     getAttributeAsStr(Name name);
-  int?            getAttributeAsInt(Name name);
-  boolean?        getAttributeAsBool(Name name);
-  int?            getAttributeAsFloat(Name name);
-
-  void            setAttribute(Name name, AttributeValue? name);
-  void            setAttributeStr(Name name, UTF8String value);
-  void            setAttributeInt(Name name, int value);
-  void            setAttributeBool(Name name, boolean value);
-  void            setAttributeFloat(Name name, float value);
-};
-```
-
+Advanced ones:
+  * User toggable details (e.g. a button to hide all IPA transcriptions, hide all translations from Spanish, show all term definitions)
+  * Glossary with tooltips
+  * Footnotes with tooltips
+  * Treebanks
+  * Diagrams
+  * Translation equivalence by hovering over the terms (just like on Google Translate)
