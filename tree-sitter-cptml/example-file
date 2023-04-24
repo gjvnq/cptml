@@ -1,0 +1,10 @@
+  {% a {% b %} %}
+{tag d={adds:1} n=0x4 l=<#a> a=[0, <a>, {}] d={"a_-": []} n=+3.2e3 n=true s="fwkenmvk\\\"\'\u{0AA}we"}
+
+{span "fr"; raison d'etre}
+
+{footnote note=<>{u;C}urly and {u;P}ointy {u;T}tag {u;M}arkup {u;L}Language</>; CPTML}
+
+{footnote show=<>{small-caps; CPTML}</>; {u;C}urly and {u;P}ointy {u;T}tag {u;M}arkup {u;L}Language}
+
+{footnote; <>{small-caps; CPTML}</> <>{u;C}urly and {u;P}ointy {u;T}tag {u;M}arkup {u;L}Language</>}

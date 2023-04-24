@@ -1075,6 +1075,18 @@ mod tests {
     // #[test]
     // fn test_tag_args_url() {
     //     assert_eq!(tag_args_url("<example.com>"), Ok(("", 0)));
+    //     assert_eq!(tag_args_url("<http://example.com/引き割り.html"), Ok(("", 0)));
+    //     assert_eq!(tag_args_url("<http://例子.卷筒纸>"), Ok(("", 0)));
+    //     assert_eq!(tag_args_url("<//example.com>"), Ok(("", 0)));
+    //     assert_eq!(tag_args_url("<ldap://[2001:db8::7]/c=GB?objectClass?one"), Ok(("", 0)));
+    //     assert_eq!(tag_args_url("<mailto:John.Doe@example.com>"), Ok(("", 0)));
+    //     assert_eq!(tag_args_url("<news:comp.infosystems.www.servers.unix>"), Ok(("", 0)));
+    //     assert_eq!(tag_args_url("<tel:+1-816-555-1212>"), Ok(("", 0)));
+    //     assert_eq!(tag_args_url("<urn:oasis:names:specification:docbook:dtd:xml:4.1.2>"), Ok(("", 0)));
+    //     assert_eq!(tag_args_url("<ftp://ftp.is.co.za/rfc/rfc1808.txt>"), Ok(("", 0)));
+    //     assert_eq!(tag_args_url("<http://a/b/c/d;p?q>"), Ok(("", 0)));
+    //     assert_eq!(tag_args_url("<telnet://user:password@host:port/>"), Ok(("", 0)));
+    //     assert_eq!(tag_args_url("<mailto:joe@example.com?cc=bob@example.com&body=hello>"), Ok(("", 0)));
     // }
 
     #[test]
